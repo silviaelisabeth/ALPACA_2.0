@@ -25,11 +25,12 @@ from tabulate import tabulate
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.discriminant_analysis import QuadraticDiscriminantAnalysis
 import warnings
-#warnings.filterwarnings("ignore")
 
 sns.set_context("paper", font_scale=2.5, rc={"lines.linewidth": 2})
 sns.set_palette("colorblind", 10)
 sns.set_style("ticks", {"xtick.direction": "in","ytick.direction": "in"})
+
+#!!!TODO: update / shorten code
 
 #################################################################################################
 # GLOBAL VARIABLES
@@ -81,6 +82,7 @@ def prescan_load_file(filename, device=1, kappa_spec=None, pumprate=None, ampli=
     # ---------------------------------------------------------------------------------------------------------
     # Load data file, which is optionally blank corrected.
     # signal (optionally blank corrected), header and unit of measurement signal (nW or pW)
+
     [l, header, unit] = read_rawdata(filename=filename, additional=additional, co=None, factor=factor, plot_raw=False,
                                      blank_corr=blank_corr, blank_mean_ex=blank_mean_ex, blank_std_ex=blank_std_ex)
 
@@ -91,13 +93,13 @@ def prescan_load_file(filename, device=1, kappa_spec=None, pumprate=None, ampli=
         l_ = l.copy()
         for i in l.columns:
             for k in l.index:
-                l_.ix[k, i] = l.ix[k, i] / 1000
+                l_.loc[k, i] = l.loc[k, i] / 1000
         unit = 'nW'
     elif unit == 'µW':
         l_ = l.copy()
         for i in l.columns:
             for k in l.index:
-                l_.ix[k, i] = l.ix[k, i] * 1000
+                l_.loc[k, i] = l.loc[k, i] * 1000
         unit = 'nW'
 
     # general information about the file. The blank value is a combination of header and external file or just extracted
@@ -121,7 +123,6 @@ def prescan_load_file(filename, device=1, kappa_spec=None, pumprate=None, ampli=
         # Emission-site correction: Balance different transmission properties of the emission filters if correction is
         # True. Dimension of correction factor is [1] or [%]
         l_em_balanced = emission_correction_table(l_, device, rg9_sample, rg665_sample, led_order=LEDs)
-
         blank_mean_ = pd.DataFrame(blank_mean, index=LEDs)
         blank_em_bal = emission_correction_table(blank_mean_.T, device, rg9_sample, rg665_sample, led_order=LEDs)
 
@@ -138,6 +139,7 @@ def prescan_load_file(filename, device=1, kappa_spec=None, pumprate=None, ampli=
     else:
         l_corr = l_
         unit_corr = unit
+        print(142, blank_mean)
         blank_corrected = blank_mean.tolist()
 
     return l_, l_corr, header, firstline, current, date, name, blank_mean, blank_std, blank_corrected, rg9_sample, \
@@ -174,8 +176,8 @@ def read_rawdata(filename, additional=False, co=None, factor=1., blank_corr=True
     data_dark = pd.read_csv(filename, sep='\t', skiprows=6, usecols=[0, 16, 17, 18, 19, 20, 21, 22, 23],
                             encoding="latin-1") * factor
     header_ = pd.read_csv(filename, sep='\t', header=None, skiprows=1, nrows=5, converters={0: lambda x: x[2:]},
-                          encoding="latin-1")
-    header = header_.ix[:, :7]
+                          encoding="latin-1")[:7]
+    header = header_
 
     # extracting LED information and signal unit from header
     unit = data_light.columns[1].split(' ')[1][1:3]
@@ -188,7 +190,7 @@ def read_rawdata(filename, additional=False, co=None, factor=1., blank_corr=True
     i = 0
     for li, j in enumerate(data_light.columns):
         if li % 2 != 0:
-            data.ix[:, li] = pd.DataFrame(data_light.ix[:, li] - data_dark.ix[:, (i + 1)])
+            data.loc[:, li] = pd.DataFrame(data_light[j] - data_dark[data_dark.columns[i+1]])
             i += 1
 
     # extracting each time and LED pair, recombinant and concatenate them afterwards
@@ -360,20 +362,20 @@ def read_directory(dirname, volume, kappa_spec, device=1., correction=False, add
 def filter_extraction_rg9(filename):
 
     header_ = pd.read_csv(filename, sep='\t', header=None, skiprows=1, nrows=5, converters={0: lambda x: x[2:]})
-    header = header_.ix[:, :7]
-    q1 = pd.DataFrame(header.ix[1, :][:2])
+    header = header_.loc[:, :7]
+    q1 = pd.DataFrame(header.loc[1, :][:2])
     q1.index = ['PD1', 'PD1']
-    q2 = pd.DataFrame(header.ix[1, :][2:4])
+    q2 = pd.DataFrame(header.loc[1, :][2:4])
     q2.index = ['PD2', 'PD2']
-    q3 = pd.DataFrame(header.ix[1, :][4:6])
+    q3 = pd.DataFrame(header.loc[1, :][4:6])
     q3.index = ['PD3', 'PD3']
-    q4 = pd.DataFrame(header.ix[1, :][6:8])
+    q4 = pd.DataFrame(header.loc[1, :][6:8])
     q4.index = ['PD4', 'PD4']
     photo = pd.concat([q1, q2, q3, q4])
     photo.columns = [0]
     photodiode = []
     for k in range(len(photo.index)):
-        photodiode.append(photo.ix[k, 0].split(' ')[2] + ' nm')
+        photodiode.append(photo.loc[k, 0].split(' ')[2] + ' nm')
     photodiode = pd.DataFrame(photodiode, index=photo.index)
 
     rg9 = []
@@ -383,7 +385,7 @@ def filter_extraction_rg9(filename):
     for el, i in enumerate(photodiode[0]):
         if i == '640 nm':
             rg9 = photodiode.index[el]
-    rg9_list = photodiode.ix[rg9, 0].tolist()
+    rg9_list = photodiode.loc[rg9, 0].tolist()
 
     return rg9_list
 
@@ -391,20 +393,20 @@ def filter_extraction_rg9(filename):
 def filter_extraction_rg665(filename, rg9):
 
     header_ = pd.read_csv(filename, sep='\t', header=None, skiprows=1, nrows=5, converters={0: lambda x: x[2:]})
-    header = header_.ix[:, :7]
-    q1 = pd.DataFrame(header.ix[1, :][:2])
+    header = header_.loc[:, :7]
+    q1 = pd.DataFrame(header.loc[1, :][:2])
     q1.index = ['PD1', 'PD1']
-    q2 = pd.DataFrame(header.ix[1, :][2:4])
+    q2 = pd.DataFrame(header.loc[1, :][2:4])
     q2.index = ['PD2', 'PD2']
-    q3 = pd.DataFrame(header.ix[1, :][4:6])
+    q3 = pd.DataFrame(header.loc[1, :][4:6])
     q3.index = ['PD3', 'PD3']
-    q4 = pd.DataFrame(header.ix[1, :][6:8])
+    q4 = pd.DataFrame(header.loc[1, :][6:8])
     q4.index = ['PD4', 'PD4']
     photo = pd.concat([q1, q2, q3, q4])
     photo.columns = [0]
     photodiode = []
     for k in range(len(photo.index)):
-        photodiode.append(photo.ix[k, 0].split(' ')[2] + ' nm')
+        photodiode.append(photo.loc[k, 0].split(' ')[2] + ' nm')
     photodiode = pd.DataFrame(photodiode, index=photo.index)
 
     rg665 = photodiode[0].tolist()
@@ -436,14 +438,14 @@ def current_extraction(filename):
     name = dd.split('_')[1]
 
     header_ = pd.read_csv(filename, sep='\t', header=None, skiprows=1, nrows=5, converters={0: lambda x: x[2:]})
-    header = header_.ix[:, :7]
+    header = header_.loc[:, :7]
 
     LEDs = []
-    for e in header.ix[1, :]:
+    for e in header.loc[1, :]:
         LEDs.append(e.split(' ')[-2] + ' nm')
 
     current = []  # mA
-    for i in header.ix[2, :]:
+    for i in header.loc[2, :]:
         current.append(int(i.split('=')[1].split('mA')[0]))
     current_ = pd.DataFrame(current, index=LEDs, columns=[name]).T
     current_.set_index = name
@@ -495,8 +497,8 @@ def info_about_file_extend(filename, header, blank_mean_ex, blank_std_ex, pumpra
     date = dd.split('_')[0]
 
     gen_info = pd.read_csv(filename, sep='\t', header=None, nrows=1, converters={0: lambda x: x[2:]})
-    amplif = int(gen_info.ix[0, 0].split('=')[1][:-1])            # Ohm
-    amplif_unit = gen_info.ix[0, 0].split('=')[1][-1]
+    amplif = int(gen_info.loc[0, 0].split('=')[1][:-1])            # Ohm
+    amplif_unit = gen_info.loc[0, 0].split('=')[1][-1]
     # multipling MAZeT amplification in order to obtain amplification in Ohm
     if amplif_unit == 'M':
         amplif = int(amplif * 1E6)
@@ -504,23 +506,27 @@ def info_about_file_extend(filename, header, blank_mean_ex, blank_std_ex, pumpra
         amplif = int(amplif * 1E3)
 
     if not pumprate:
-        pumprate = float(gen_info.ix[0, 2].split('=')[1])  # mL/min
+        pumprate = float(gen_info.loc[0, 2].split('=')[1])  # mL/min
 
     current = []  # mA
-    for i in header.ix[2, :]:
-        current.append(int(float(i.split('=')[1].split('mA')[0])))
+    for i in header.loc[2, :]:
+        if isinstance(i, np.float) is False:
+            current.append(int(float(i.split('=')[1].split('mA')[0].strip())))
+
     ADC = []  # V
-    for l in header.ix[3, :]:
-        ADC.append(l.split(' ')[-1])
+    for l in header.loc[3, :]:
+        if isinstance(l, np.float) is False:
+            ADC.append(l.split(' ')[-1])
 
     blank_mean_header = []
     blank_std_header = []
     unit_blank_header = []
     # Extract the blank calculated and stored in the header
-    for k in header.ix[4, :]:
-        blank_mean_header.append(float(k.split('=')[1].split('+/-')[0]))
-        blank_std_header.append(float(k.split('=')[1].split('+/-')[1][:-2]))
-        unit_blank_header.append(k.split('=')[1][-2:])
+    for k in header.loc[4, :]:
+        if isinstance(k, np.float) is False:
+            blank_mean_header.append(float(k.split('=')[1].split('+/-')[0]))
+            blank_std_header.append(float(k.split('=')[1].split('+/-')[1][:-2]))
+            unit_blank_header.append(k.split('=')[1][-2:])
 
     if unit_blank_header[0] == 'pA' or unit_blank_header[0] == 'pW':
         for p, q in enumerate(blank_mean_header):
@@ -540,9 +546,10 @@ def info_about_file_extend(filename, header, blank_mean_ex, blank_std_ex, pumpra
 
     LED_wl = []
     LEDs = []
-    for e in header.ix[1, :]:
-        LED_wl.append(int(e.split(' ')[-2]))
-        LEDs.append(e.split(' ')[-2] + ' nm')
+    for e in header.loc[1, :]:
+        if isinstance(e, np.float) is False:
+            LED_wl.append(int(e.split(' ')[-2]))
+            LEDs.append(e.split(' ')[-2] + ' nm')
 
     if unit_blank is None:
         unit_blank = unit_blank_header
@@ -567,7 +574,7 @@ def LED_Filter(name):
     for el, i in enumerate(photodiode[0]):
         if i == '640 nm':
             rg9 = photodiode.index[el]
-    RG9 = photodiode.ix[rg9, 0].tolist()
+    RG9 = photodiode.loc[rg9, 0].tolist()
     RG665 = photodiode[0].tolist()
     RG665.remove(RG9[0])
     RG665.remove(RG9[1])
@@ -578,43 +585,43 @@ def LED_Filter(name):
 def processed_data_load_file(file):
     d = pd.read_csv(file, sep='\t', index_col=0, header=None, encoding='latin-1')
 
-    sample_name = d.ix[0, 1]
+    sample_name = d.loc[0, 1]
     ind = []
-    for i in d.ix['LED', :].tolist():
+    for i in d.loc['LED', :].tolist():
         ind.append(str(i)[:-2])
     cur = []
-    for k in d.ix[4, :]:
+    for k in d.loc[4, :]:
         cur.append(float(k.split(' ')[2]))
-    ampli = d.ix[1, 1].split('=')[1]
-    datum = d.ix[0, 2].split(' ')[0]
-    time = d.ix[0, 2].split(' ')[1][:-1]
+    ampli = d.loc[1, 1].split('=')[1]
+    datum = d.loc[0, 2].split(' ')[0]
+    time = d.loc[0, 2].split(' ')[1][:-1]
     date = datum.split('.')[2] + datum.split('.')[1] + datum.split('.')[0] + time.split(':')[0] + time.split(':')[1]
 
     if len(d.index) >= 14:
         # now with counted cells in result file
         volume = float(d.index[10].split('/')[1].split('mL')[0])
-        counted_cells_ = d.ix[d.index[10], :].tolist()
+        counted_cells_ = d.loc[d.index[10], :].tolist()
         # LED info as float without 'nm'
-        counted_cells = pd.DataFrame(counted_cells_, index=d.ix['LED', :], columns=[d.index[10]]).T
-        lod = d.ix[d.index[11], :].tolist()
-        lod = pd.DataFrame(lod, index=d.ix['LED', :], columns=[d.index[11]]).T
+        counted_cells = pd.DataFrame(counted_cells_, index=d.loc['LED', :], columns=[d.index[10]]).T
+        lod = d.loc[d.index[11], :].tolist()
+        lod = pd.DataFrame(lod, index=d.loc['LED', :], columns=[d.index[11]]).T
     else:
         volume = NaN
         counted_cells = []
         lod = []
 
     if 'mean value [pW]' in d.index:
-        led_mean = pd.DataFrame([d.ix['mean value [pW]', :]],
+        led_mean = pd.DataFrame([d.loc['mean value [pW]', :]],
                                 index=[sample_name]).T  # blank corrected and corrected em-/ex-site
         led_mean.index = ind
         unit = 'pW'
     elif 'mean value [nW]' in d.index:
-        led_mean = pd.DataFrame([d.ix['mean value [nW]', :]],
+        led_mean = pd.DataFrame([d.loc['mean value [nW]', :]],
                                 index=[sample_name]).T  # blank corrected and corrected em-/ex-site
         led_mean.index = ind
         unit = 'nW'
     elif 'mean value [µW]' in d.index:
-        led_mean = pd.DataFrame([d.ix['mean value [µW]', :]],
+        led_mean = pd.DataFrame([d.loc['mean value [µW]', :]],
                                 index=[sample_name]).T  # blank corrected and corrected em-/ex-site
         led_mean.index = ind
         unit = 'µW'
@@ -622,9 +629,9 @@ def processed_data_load_file(file):
     # transfer mean values to nW
     if unit == 'pW':
         for i in led_mean.index:
-            led_mean.ix[i, led_mean.columns[0]] = (float(led_mean.ix[i, led_mean.columns[0]]) / 1000)
+            led_mean.loc[i, led_mean.columns[0]] = (float(led_mean.loc[i, led_mean.columns[0]]) / 1000)
     for t in led_mean.index:
-        led_mean.ix[t, led_mean.columns[0]] = float(led_mean.ix[t, led_mean.columns[0]])
+        led_mean.loc[t, led_mean.columns[0]] = float(led_mean.loc[t, led_mean.columns[0]])
 
     return led_mean, sample_name, cur, ampli, volume, lod, counted_cells, unit, date
 
@@ -636,37 +643,37 @@ def led_reduction(LED380_checkbox, LED403_checkbox, LED438_checkbox, LED453_chec
                             index=['380 nm', '403 nm', '438 nm', '453 nm', '472 nm', '526 nm', '593 nm', '640 nm']).T
 
     if LED380_checkbox is True:
-        led_used.ix[0, '380 nm'] = True
+        led_used.loc[0, '380 nm'] = True
     else:
-        led_used.ix[0, '380 nm'] = False
+        led_used.loc[0, '380 nm'] = False
     if LED403_checkbox is True:
-        led_used.ix[0, '403 nm'] = True
+        led_used.loc[0, '403 nm'] = True
     else:
-        led_used.ix[0, '403 nm'] = False
+        led_used.loc[0, '403 nm'] = False
     if LED438_checkbox is True:
-        led_used.ix[0, '438 nm'] = True
+        led_used.loc[0, '438 nm'] = True
     else:
-        led_used.ix[0, '438 nm'] = False
+        led_used.loc[0, '438 nm'] = False
     if LED453_checkbox is True:
-        led_used.ix[0, '453 nm'] = True
+        led_used.loc[0, '453 nm'] = True
     else:
-        led_used.ix[0, '453 nm'] = False
+        led_used.loc[0, '453 nm'] = False
     if LED472_checkbox is True:
-        led_used.ix[0, '472 nm'] = True
+        led_used.loc[0, '472 nm'] = True
     else:
-        led_used.ix[0, '472 nm'] = False
+        led_used.loc[0, '472 nm'] = False
     if LED526_checkbox is True:
-        led_used.ix[0, '526 nm'] = True
+        led_used.loc[0, '526 nm'] = True
     else:
-        led_used.ix[0, '526 nm'] = False
+        led_used.loc[0, '526 nm'] = False
     if LED593_checkbox is True:
-        led_used.ix[0, '593 nm'] = True
+        led_used.loc[0, '593 nm'] = True
     else:
-        led_used.ix[0, '593 nm'] = False
+        led_used.loc[0, '593 nm'] = False
     if LED640_checkbox is True:
-        led_used.ix[0, '640 nm'] = True
+        led_used.loc[0, '640 nm'] = True
     else:
-        led_used.ix[0, '640 nm'] = False
+        led_used.loc[0, '640 nm'] = False
 
     return led_used
 
@@ -719,8 +726,8 @@ def training_database(trainings_path, led_used):
         training_red = pd.DataFrame(np.zeros(shape=(len(training.index), 0)), index=training.index)
 
         for i in led_used.columns:
-            if led_used.ix[0, i] == True:
-                training_red.ix[:, i] = training.ix[:, i]
+            if led_used.loc[0, i] == True:
+                training_red.loc[:, i] = training.loc[:, i]
         training_red_sort = training_red.sort_index(axis=1)
 
         return training_red_sort, training, training_red
@@ -770,7 +777,7 @@ def taxonomic_level_reduction(prob, separation='phylum', likelyhood=False):
     # classify the identified algal group in the DataFrame according to their phylum
     for i in range(len(probability.index)):
         phylum = alg_group[alg_group[separation] == probability.index[i]]['phylum'].values[0]
-        prob_group_all.ix[i, phylum] = probability.ix[probability.index[i], 'gaussian prob.']
+        prob_group_all.loc[i, phylum] = probability.loc[probability.index[i], 'gaussian prob.']
 
     group_prob_ = pd.DataFrame(sum(prob_group_all), columns=['phylum probability'])
     group_prob = group_prob_ / prob_total.tolist()[0] * 100
@@ -833,7 +840,7 @@ def detection(header, rg665, rg9, kappa_spec, date, current, unit_blank, full_ca
     :return:    list:       detection limits for each LED
     """
     led_order = []
-    for led in header.ix[1, :]:
+    for led in header.loc[1, :]:
         led_order.append(led.split(' ')[2] + ' nm')
 
     [mean_ex_corr, std_ex_corr, unit_blank] = mean_conversion(led_order=led_order, rg665=rg665, rg9=rg9,
@@ -846,13 +853,13 @@ def detection(header, rg665, rg9, kappa_spec, date, current, unit_blank, full_ca
     LoD = []
     if blank_corr:
         # the mean value of the blank was subtracted before
-        for i in range(len(mean_ex_corr.ix[mean_ex_corr.index[0], :].tolist())):
-            LoD.append(3*std_ex_corr.ix[std_ex_corr.index[0], :].tolist()[i])
+        for i in range(len(mean_ex_corr.loc[mean_ex_corr.index[0], :].tolist())):
+            LoD.append(3*std_ex_corr.loc[std_ex_corr.index[0], :].tolist()[i])
     else:
         # the mean value of the blank has to be taken into account
-        for i in range(len(mean_ex_corr.ix[mean_ex_corr.index[0], :].tolist())):
-            LoD.append(mean_ex_corr.ix[mean_ex_corr.index[0], :].tolist()[i] +
-                       3*std_ex_corr.ix[std_ex_corr.index[0], :].tolist()[i])
+        for i in range(len(mean_ex_corr.loc[mean_ex_corr.index[0], :].tolist())):
+            LoD.append(mean_ex_corr.loc[mean_ex_corr.index[0], :].tolist()[i] +
+                       3*std_ex_corr.loc[std_ex_corr.index[0], :].tolist()[i])
     LoD = pd.DataFrame(LoD, index=led_order, columns=[int(device)]).T
 
     return LoD
@@ -899,13 +906,13 @@ def counter(l, LoD, volume, xcoords=None, division=None, warn=True):
 
     # calculate the mean value for each LED from the detected peaks and set negative values to zero
     if xcoords[0] >= xcoords[1]:
-        mean_sample = peak.ix[xcoords[1]:xcoords[0], :].mean()
+        mean_sample = peak.loc[xcoords[1]:xcoords[0], :].mean()
     elif xcoords[1] > xcoords[0]:
-        mean_sample = peak.ix[xcoords[0]:xcoords[1], :].mean()
+        mean_sample = peak.loc[xcoords[0]:xcoords[1], :].mean()
     if xcoords[2] > xcoords[3]:
-        mean_blank = peak.ix[xcoords[3]:xcoords[2], :].mean()
+        mean_blank = peak.loc[xcoords[3]:xcoords[2], :].mean()
     elif xcoords[3] > xcoords[2]:
-        mean_blank = peak.ix[xcoords[2]:xcoords[3], :].mean()
+        mean_blank = peak.loc[xcoords[2]:xcoords[3], :].mean()
     elif xcoords[2] == xcoords[3]:
         mean_blank = pd.Series([0, 0, 0, 0, 0, 0, 0, 0], index=mean_sample.index)
 
@@ -916,10 +923,10 @@ def counter(l, LoD, volume, xcoords=None, division=None, warn=True):
 
     mean[mean < 0] = 0
     for el in range(len(peak.columns)):
-        if np.isnan(mean.ix[el, :]):
+        if np.isnan(mean.loc[el, :]):
             if warn is True:
                 print('No peaks found for LED {}'.format(mean.index[el]))
-            mean.ix[el] = 0
+            mean.loc[el] = 0
 
     return c, peak, mean
 
@@ -1024,12 +1031,12 @@ def emission_correction(mean, device, RG9_sample, RG665_sample, led_order):
     # Balance the RG665 and RG9 emission filters by LED-at-RG665 = LED-at-RG9 / balance_factor(RG665/RG9)
     for i in RG9_sample:
         if i in mean.index:
-            mean.ix[i, :] = mean.ix[i, :].values[0] / balance_factor.ix[int(device), i]
+            mean.loc[i, :] = mean.loc[i, :].values[0] / balance_factor.loc[int(device), i]
         else:
             print('LED', i, 'not used for analysis')
     for i in RG665_sample:
         if i in mean.index:
-            mean.ix[i, :] = mean.ix[i, :].values[0] / balance_factor.ix[int(device), i]
+            mean.loc[i, :] = mean.loc[i, :].values[0] / balance_factor.loc[int(device), i]
         else:
             print('LED', i, 'not used for analysis')
 
@@ -1053,9 +1060,9 @@ def emission_correction_table(df, device, RG9, RG665, led_order):
     # Balance the RG665 and RG9 emission filters by LED-at-RG665 = LED-at-RG9 / balance_factor(RG665/RG9). Dimension = 1
     for i in RG9:
 
-        df_em[i] = df[i].values / balance_factor.ix[int(device), i]
+        df_em[i] = df[i].values / balance_factor.loc[int(device), i]
     for i in RG665:
-        df_em[i] = df[i].values / balance_factor.ix[int(device), i]
+        df_em[i] = df[i].values / balance_factor.loc[int(device), i]
 
     return df_em
 
@@ -1091,7 +1098,7 @@ def correction_led(mean, kappa_spec, date, current, peakcolumns, led_total, full
     else:
         kappa = pd.read_csv(kappa_spec, sep='\t', index_col=0)
 
-    corr_factor = kappa.ix[:-1, :].astype(float)
+    corr_factor = kappa.loc[:-1, :].astype(float)
     corr_factor = corr_factor.set_index(corr_factor.index.astype(int))
     mean_corr = mean.copy()
     mean = pd.DataFrame(mean_corr)
@@ -1123,10 +1130,10 @@ def correction_led(mean, kappa_spec, date, current, peakcolumns, led_total, full
             if k not in corr_factor.columns:
                 print('\n', 'Warning! No correction factor for LED {}'.format(k))
                 for r in range(len(mean.columns)):                  # if there are more than one column in the matrix
-                    mean_corr.ix[k, r] = mean.ix[k, r] * 1.0E-3
+                    mean_corr.loc[k, r] = mean.loc[k, r] * 1.0E-3
             else:
                 for r in mean.columns:                              # if there are more than one column in the matrix
-                    mean_corr.ix[k, r] = mean.ix[k, r] * corr_factor.ix[current.ix[0, k], k]
+                    mean_corr.loc[k, r] = mean.loc[k, r] * corr_factor.loc[current.loc[0, k], k]
 
     return mean_corr
 
@@ -1160,7 +1167,7 @@ def correction_led_table(df, kappa_spec, date, current, peakcolumns, full_calibr
         kappa = pd.read_csv(kappa_spec, sep='\t', index_col=0)
 
     # Preparation of data frames so you won't overwrite anything
-    corr_factor = kappa.ix[:-1, :].astype(float)
+    corr_factor = kappa.iloc[:-1].astype(float)
     corr_factor = corr_factor.set_index(corr_factor.index.astype(int))
     df_led_corr = df.copy()
     df = pd.DataFrame(df)
@@ -1191,7 +1198,7 @@ def correction_led_table(df, kappa_spec, date, current, peakcolumns, full_calibr
                 print('\n', 'Warning! No correction factor for LED {}'.format(k))
                 df_led_corr[k] = df[k] * 1.0E-3
             else:
-                df_led_corr[k] = df[k] * corr_factor.ix[current.ix[0, k], k]
+                df_led_corr[k] = df[k] * corr_factor.loc[current.loc[0, k], k]
 
     return df_led_corr
 
@@ -1230,14 +1237,14 @@ def priority_lda(training_data_list, separation, training_corr):
     con = pd.DataFrame(qqt[separation])
     con.index = qqt['genus']
     # table of algae analysed and taxonomic level according to separation level
-    con_ = con.ix[:(len(con) - 1)]
+    con_ = con.loc[:(len(con) - 1)]
 
     # reduce principle possible groups to the amount of effectively used groups
     group = []
 
     for i in range(len(tr)):
         if tr[i] in con_.index:
-            group.append(con_.ix[tr[i], separation])
+            group.append(con_.loc[tr[i], separation])
         else:
             print('Warning! Sample {} not found in training matrix...'.format(tr[i]))
             training_corr = training_corr.drop(tr[i])
@@ -1263,7 +1270,7 @@ def priority_lda(training_data_list, separation, training_corr):
     if separation == 'phylum':
         a_con = a
     else:
-        a_con = pd.concat([con, a], axis=1).ix[:len(a) - 1]
+        a_con = pd.concat([con, a], axis=1).loc[:len(a) - 1]
 
     dino = a_con[a_con[b] == c].drop_duplicates()
     dinos_in_group = []
@@ -1273,7 +1280,7 @@ def priority_lda(training_data_list, separation, training_corr):
         else:
             pass
     for t in range(len(dinos_in_group)):
-        groups.ix[dinos_in_group[t], 'emphasis'] = len(groups) / len(dinos_in_group)
+        groups.loc[dinos_in_group[t], 'emphasis'] = len(groups) / len(dinos_in_group)
     priority = groups['emphasis'].tolist()
 
     return groups, priority, training_corr
@@ -1409,20 +1416,20 @@ def lda_process_individual(l, training_corr, LoD, classes_dict, colorclass_dict,
     shift = volume_ * 1000 / (pumprate / 1000 / 60)
 
     # concatenate the blank-corrected data to a new DataFrame with the same time line.
-    data0 = l.ix[:, 0:1].dropna()
-    data7 = l.ix[:, 1:2].dropna()
+    data0 = l.loc[:, 0:1].dropna()
+    data7 = l.loc[:, 1:2].dropna()
     data7.index = data0.index
-    data1 = l.ix[:, 2:3].dropna()
+    data1 = l.loc[:, 2:3].dropna()
     data1.index = data0.index - 1 * shift
-    data6 = l.ix[:, 3:4].dropna()
+    data6 = l.loc[:, 3:4].dropna()
     data6.index = data1.index
-    data2 = l.ix[:, 4:5].dropna()
+    data2 = l.loc[:, 4:5].dropna()
     data2.index = data0.index - 2 * shift
-    data5 = l.ix[:, 5:6].dropna()
+    data5 = l.loc[:, 5:6].dropna()
     data5.index = data2.index
-    data3 = l.ix[:, 6:7].dropna()
+    data3 = l.loc[:, 6:7].dropna()
     data3.index = data0.index - 3 * shift
-    data4 = l.ix[:, 7:8].dropna()
+    data4 = l.loc[:, 7:8].dropna()
     data4.index = data3.index
     ld = [data0, data7, data1, data6, data2, data5, data3, data4]
     data = pd.concat(ld, axis=1)
@@ -1439,14 +1446,14 @@ def lda_process_individual(l, training_corr, LoD, classes_dict, colorclass_dict,
     # delete rows where all entries are NaN and replace NaN, occurring only on few columns for one row, with LoD for
     # each columns
     peak = peak[~np.isnan(peak).all(axis=1)]
-    peak.ix[:, 0:1] = peak.ix[:, 0:1].replace(to_replace=NaN, value=LoD[0])
-    peak.ix[:, 1:2] = peak.ix[:, 1:2].replace(to_replace=NaN, value=LoD[1])
-    peak.ix[:, 2:3] = peak.ix[:, 2:3].replace(to_replace=NaN, value=LoD[2])
-    peak.ix[:, 3:4] = peak.ix[:, 3:4].replace(to_replace=NaN, value=LoD[3])
-    peak.ix[:, 4:5] = peak.ix[:, 4:5].replace(to_replace=NaN, value=LoD[4])
-    peak.ix[:, 5:6] = peak.ix[:, 5:6].replace(to_replace=NaN, value=LoD[5])
-    peak.ix[:, 6:7] = peak.ix[:, 6:7].replace(to_replace=NaN, value=LoD[6])
-    peak.ix[:, 7:8] = peak.ix[:, 7:8].replace(to_replace=NaN, value=LoD[7])
+    peak.loc[:, 0:1] = peak.loc[:, 0:1].replace(to_replace=NaN, value=LoD[0])
+    peak.loc[:, 1:2] = peak.loc[:, 1:2].replace(to_replace=NaN, value=LoD[1])
+    peak.loc[:, 2:3] = peak.loc[:, 2:3].replace(to_replace=NaN, value=LoD[2])
+    peak.loc[:, 3:4] = peak.loc[:, 3:4].replace(to_replace=NaN, value=LoD[3])
+    peak.loc[:, 4:5] = peak.loc[:, 4:5].replace(to_replace=NaN, value=LoD[4])
+    peak.loc[:, 5:6] = peak.loc[:, 5:6].replace(to_replace=NaN, value=LoD[5])
+    peak.loc[:, 6:7] = peak.loc[:, 6:7].replace(to_replace=NaN, value=LoD[6])
+    peak.loc[:, 7:8] = peak.loc[:, 7:8].replace(to_replace=NaN, value=LoD[7])
 
     # preparation of the detected peaks to analyse them individually
     index = ['sample'] * len(peak)
@@ -1574,7 +1581,7 @@ def reference_scores(lda, training_score, classes_dict):
 
     for v in range(len(training_score.columns)-1):
         col = str(training_score.columns[v]) + 'var'
-        d[col] = training_score.groupby("label").var().ix[:, v]
+        d[col] = training_score.groupby("label").var().loc[:, v]
 
     # replace NaN values with a small distribution
     for c in d.columns:
@@ -1600,7 +1607,7 @@ def sample_distance(d, df_score):
 
     for i in d.index:
         for y in range(len(df_score.columns)):
-            list.ix[i, y] = (((d.ix[i, :][df_score.columns[y]] - df_score[df_score.columns[y]])**2).values[0])
+            list.loc[i, y] = (((d.loc[i, :][df_score.columns[y]] - df_score[df_score.columns[y]])**2).values[0])
     d['distance'] = (np.sqrt(sum(list, axis=1)))
 
     # sort distance
@@ -1707,7 +1714,7 @@ def plot_distribution_2d(d, df_score, color, alg_group, alg_phylum, phyl_group, 
 
     # plotting the centers of each algal class
     for el in d.index:
-        ax.scatter(d.ix[el, 0], d.ix[el, 1], facecolor=color[el], edgecolor='k', s=60)
+        ax.scatter(d.loc[el, 0], d.loc[el, 1], facecolor=color[el], edgecolor='k', s=60)
 
     # calculate the standard deviation within one class to built up a solid (sphere with 3 different radii)
     # around the centroid using spherical coordinates
@@ -1717,13 +1724,13 @@ def plot_distribution_2d(d, df_score, color, alg_group, alg_phylum, phyl_group, 
         if phyl in phyl_group['phylum_label'].values:
             pass
         else:
-            phyl_group.ix[i, 'phylum_label'] = phyl
-            phyl_group.ix[i, 'color'] = alg_phylum.ix[phyl, :].values
+            phyl_group.loc[i, 'phylum_label'] = phyl
+            phyl_group.loc[i, 'color'] = alg_phylum.loc[phyl, :].values
 
-        rx = np.sqrt(d['LDA1var'].ix[i])
-        ry = np.sqrt(d['LDA2var'].ix[i])
-        c_x = d.ix[i]['LDA1']
-        c_y = d.ix[i]['LDA2']
+        rx = np.sqrt(d['LDA1var'].loc[i])
+        ry = np.sqrt(d['LDA2var'].loc[i])
+        c_x = d.loc[i]['LDA1']
+        c_y = d.loc[i]['LDA2']
         ells = Ellipse(xy=[c_x, c_y], width=rx, height=ry, angle=0, edgecolor=color[i], lw=1, facecolor=color[i],
                        alpha=0.6, label=i)
         ax.add_artist(ells)
@@ -1738,7 +1745,7 @@ def plot_distribution_2d(d, df_score, color, alg_group, alg_phylum, phyl_group, 
 
     patch = []
     for i in phyl_group.index:
-        patch.append(mpatches.Patch(color=phyl_group.ix[i, 'color'][0], label=phyl_group.ix[i, 'phylum_label']))
+        patch.append(mpatches.Patch(color=phyl_group.loc[i, 'color'][0], label=phyl_group.loc[i, 'phylum_label']))
         ax.legend(handles=patch, loc="upper center", bbox_to_anchor=(1.2, 0.9), frameon=True, fontsize=11)
 
     plt.setp(ax.get_xticklabels(), fontsize=13)
@@ -1749,7 +1756,7 @@ def plot_distribution_2d(d, df_score, color, alg_group, alg_phylum, phyl_group, 
 
     # plotting the sample scores
     for i in range(len(df_score.T)):
-        ax.plot(df_score.ix[0, 0], df_score.ix[1, 0], marker='^', markersize=14, color='orangered', label='')
+        ax.plot(df_score.loc[0, 0], df_score.loc[1, 0], marker='^', markersize=14, color='orangered', label='')
     f.subplots_adjust(left=0.1, right=0.75, bottom=0.18, top=0.85)
 
     if save_fig is True:
@@ -1768,7 +1775,7 @@ def plot_distribution_3d(d, df_score, alg_group, alg_phylum, phyl_group, color, 
 
     # plotting the centers of each algal class
     for el in d.index:
-        ax.scatter(d.ix[el, 0], d.ix[el, 1], d.ix[el, 2], marker='.', color='k', s=60)
+        ax.scatter(d.loc[el, 0], d.loc[el, 1], d.loc[el, 2], marker='.', color='k', s=60)
 
     # calculate the standard deviation within one class to built up a solid (sphere with 3 different radii)
     # around the centroid using spherical coordinates
@@ -1779,15 +1786,15 @@ def plot_distribution_3d(d, df_score, alg_group, alg_phylum, phyl_group, color, 
         if phyl in phyl_group['phylum_label'].values:
             pass
         else:
-            phyl_group.ix[i, 'phylum_label'] = phyl
-            phyl_group.ix[i, 'color'] = alg_phylum.ix[phyl, :].values
+            phyl_group.loc[i, 'phylum_label'] = phyl
+            phyl_group.loc[i, 'color'] = alg_phylum.loc[phyl, :].values
 
-        rx = np.sqrt(d['LDA1var'].ix[i])
-        ry = np.sqrt(d['LDA2var'].ix[i])
-        rz = np.sqrt(d['LDA3var'].ix[i])
-        c_x = d.ix[i]['LDA1']
-        c_y = d.ix[i]['LDA2']
-        c_z = d.ix[i]['LDA3']
+        rx = np.sqrt(d['LDA1var'].loc[i])
+        ry = np.sqrt(d['LDA2var'].loc[i])
+        rz = np.sqrt(d['LDA3var'].loc[i])
+        c_x = d.loc[i]['LDA1']
+        c_y = d.loc[i]['LDA2']
+        c_z = d.loc[i]['LDA3']
 
         u, v = np.mgrid[0:2 * np.pi:10j, 0:np.pi:20j]
         x = rx * np.cos(u) * np.sin(v) + c_x
@@ -1807,7 +1814,7 @@ def plot_distribution_3d(d, df_score, alg_group, alg_phylum, phyl_group, color, 
 
     patch = []
     for i in phyl_group.index:
-        patch.append(mpatches.Patch(color=phyl_group.ix[i, 'color'][0], label=phyl_group.ix[i, 'phylum_label']))
+        patch.append(mpatches.Patch(color=phyl_group.loc[i, 'color'][0], label=phyl_group.loc[i, 'phylum_label']))
         ax.legend(handles=patch, loc="upper center", bbox_to_anchor=(0., 0.9), frameon=True, fancybox=True,
                   fontsize=10)
 
@@ -1833,7 +1840,7 @@ def plot_distribution_3d(d, df_score, alg_group, alg_phylum, phyl_group, color, 
     # plotting the sample scores
     for i in range(len(df_score)):
         sample = df_score.T.columns[i]
-        ax.scatter(df_score.ix[sample, 'LDA1'], df_score.ix[sample, 'LDA2'], df_score.ix[sample, 'LDA3'],
+        ax.scatter(df_score.loc[sample, 'LDA1'], df_score.loc[sample, 'LDA2'], df_score.loc[sample, 'LDA3'],
                    marker='^', s=250, color='orangered', label='')
 
     f.subplots_adjust(left=0.10, right=0.95, bottom=0.06, top=0.99)
@@ -1869,12 +1876,12 @@ def plot_histogram(filename, mean, date, info, path=None, save_name=None, save_f
     means = mean / mean.max()
 
     for i in means.index:
-        if (means.ix[i, :].values[0]) < 0:
-            means.ix[i, :].values[0] = 0
+        if (means.loc[i, :].values[0]) < 0:
+            means.loc[i, :].values[0] = 0
 
     f, ax = plt.subplots(figsize=(7.5, 5))  # figsize refers to width and height figsize=(16, 9)
     for k, l in enumerate(mean.index):
-        ax.bar(k, means.ix[l, :], width=0.9, color=LED_color[k])
+        ax.bar(k, means.loc[l, :], width=0.9, color=LED_color[k])
     ax = plt.gca()
     ax.set_xticks([0., 1., 2., 3., 4., 5., 6., 7.])
     ax.set_xticklabels(mean.index, fontsize=15)
@@ -2116,9 +2123,9 @@ def construction_training_database(data, trainingsdata, xcoords, device=1, devic
         training_corr1 = pd.DataFrame(zeros((a, b)), columns=training_balanced.columns)
 
         for s in range(len(training_balanced.index)):
-            cur_training = trans_current.ix[s, :].values.tolist()
+            cur_training = trans_current.loc[s, :].values.tolist()
             mean_tra = pd.DataFrame(training_trans.T[s])
-            training_corr_trans = correction_led(mean_tra, kappa_spec, training_date.ix[s, :].values[0],
+            training_corr_trans = correction_led(mean_tra, kappa_spec, training_date.loc[s, :].values[0],
                                                        cur_training, training_current.columns,
                                                        full_calibration=full_calibration, print_info=False).T
             training_corr1.T[s] = training_corr_trans.T
@@ -2188,20 +2195,20 @@ def construction_training_database(data, trainingsdata, xcoords, device=1, devic
         shift = volume_ * 1000 / (pumprate / 1000 / 60)
 
         # concatenate the blank-corrected data to a new DataFrame with the same time line.
-        data0 = l.ix[:, 0:1].dropna()
-        data7 = l.ix[:, 1:2].dropna()
+        data0 = l.loc[:, 0:1].dropna()
+        data7 = l.loc[:, 1:2].dropna()
         data7.index = data0.index
-        data1 = l.ix[:, 2:3].dropna()
+        data1 = l.loc[:, 2:3].dropna()
         data1.index = data0.index - 1 * shift
-        data6 = l.ix[:, 3:4].dropna()
+        data6 = l.loc[:, 3:4].dropna()
         data6.index = data1.index
-        data2 = l.ix[:, 4:5].dropna()
+        data2 = l.loc[:, 4:5].dropna()
         data2.index = data0.index - 2 * shift
-        data5 = l.ix[:, 5:6].dropna()
+        data5 = l.loc[:, 5:6].dropna()
         data5.index = data2.index
-        data3 = l.ix[:, 6:7].dropna()
+        data3 = l.loc[:, 6:7].dropna()
         data3.index = data0.index - 3 * shift
-        data4 = l.ix[:, 7:8].dropna()
+        data4 = l.loc[:, 7:8].dropna()
         data4.index = data3.index
         ld = [data0, data7, data1, data6, data2, data5, data3, data4]
         data = pd.concat(ld, axis=1)
@@ -2217,14 +2224,14 @@ def construction_training_database(data, trainingsdata, xcoords, device=1, devic
         # delete rows where all entries are NaN and replace NaN, occurring only on few columns for one row, with LoD for
         # each columns
         peak = peak[~np.isnan(peak).all(axis=1)]
-        peak.ix[:, 0:1] = peak.ix[:, 0:1].replace(to_replace=NaN, value=LoD[0])
-        peak.ix[:, 1:2] = peak.ix[:, 1:2].replace(to_replace=NaN, value=LoD[1])
-        peak.ix[:, 2:3] = peak.ix[:, 2:3].replace(to_replace=NaN, value=LoD[2])
-        peak.ix[:, 3:4] = peak.ix[:, 3:4].replace(to_replace=NaN, value=LoD[3])
-        peak.ix[:, 4:5] = peak.ix[:, 4:5].replace(to_replace=NaN, value=LoD[4])
-        peak.ix[:, 5:6] = peak.ix[:, 5:6].replace(to_replace=NaN, value=LoD[5])
-        peak.ix[:, 6:7] = peak.ix[:, 6:7].replace(to_replace=NaN, value=LoD[6])
-        peak.ix[:, 7:8] = peak.ix[:, 7:8].replace(to_replace=NaN, value=LoD[7])
+        peak.loc[:, 0:1] = peak.loc[:, 0:1].replace(to_replace=NaN, value=LoD[0])
+        peak.loc[:, 1:2] = peak.loc[:, 1:2].replace(to_replace=NaN, value=LoD[1])
+        peak.loc[:, 2:3] = peak.loc[:, 2:3].replace(to_replace=NaN, value=LoD[2])
+        peak.loc[:, 3:4] = peak.loc[:, 3:4].replace(to_replace=NaN, value=LoD[3])
+        peak.loc[:, 4:5] = peak.loc[:, 4:5].replace(to_replace=NaN, value=LoD[4])
+        peak.loc[:, 5:6] = peak.loc[:, 5:6].replace(to_replace=NaN, value=LoD[5])
+        peak.loc[:, 6:7] = peak.loc[:, 6:7].replace(to_replace=NaN, value=LoD[6])
+        peak.loc[:, 7:8] = peak.loc[:, 7:8].replace(to_replace=NaN, value=LoD[7])
 
         # preparation of the detected peaks to analyse them individually
         index = ['sample'] * len(peak)
