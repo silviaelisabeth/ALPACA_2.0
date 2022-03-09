@@ -27,21 +27,24 @@ import matplotlib.patches as mpatches
 sns.set_context('paper', font_scale=.5, rc={"lines.linewidth": .25, "axes.linewidth": 0.25, "grid.linewidth": 0.25})
 sns.set_style('ticks', {"xtick.direction": "in", "ytick.direction": "in"})
 
-
 # global layout parameters
 fs = 5          # font size in plot figures
 fs_font = 11    # font size for buttons, etc. in window layout
-led_color_dict = {"380 nm": '#610061', "403 nm": '#8300BC', "438 nm": '#0A00FF', "453 nm": '#0057FF',
-                  "472 nm": '#00AEFF', "526 nm": '#00FF17', "544 nm": '#8CFF00', "593 nm": '#FFD500',
+#led_color_dict = {"380 nm": '#610061', "403 nm": '#8300BC', "438 nm": '#0A00FF', "453 nm": '#0057FF',
+#                  "472 nm": '#00AEFF', "526 nm": '#00FF17', "544 nm": '#8CFF00', "593 nm": '#FFD500',
+#                  "640 nm": '#FF2100'}
+led_color_dict = {"380 nm": '#610061', "403 nm": '#951BC9', "438 nm": '#0801DF', "453 nm": '#0057FF',
+                  "472 nm": '#00AEFF', "526 nm": '#00E013', "544 nm": ' #87F500', "593 nm": '#FFD500',
                   "640 nm": '#FF2100'}
-
 # global parameters
 led_selected = ['526', '438', '593', '453', '380', '472', '403', '640']
-ls_LDAset = ['blank correction', 'optical correction', 'LED linear ampl', 'peak detection', 'dinophyta', '3D']
+ls_LDAset = ['blank correction', 'optical correction', 'LED linear ampl', 'peak detection', 'dinophyta', '3D',
+             'normalize', 'standardize']
 
-#!!!TODO: resize pages
-# !!!TODO: switch 3D vs 2D
-#!!! TODO: requirements to allow nextID
+results = dict()
+
+# !!!TODO: resize pages
+# !!! TODO: requirements to allow nextID
 
 
 class QIComboBox(QComboBox):
@@ -67,7 +70,7 @@ class MagicWizard(QWizard):
         self.setGeometry(50, 50, 500, 300)
 
         # define Wizard style and certain options
-        self.setWizardStyle(QWizard.ModernStyle)
+        self.setWizardStyle(QWizard.MacStyle)
         self.setOptions(QtWidgets.QWizard.NoCancelButtonOnLastPage | QtWidgets.QWizard.HaveFinishButtonOnEarlyPages)
 
 
@@ -126,7 +129,8 @@ class IntroPage(QWizardPage):
 
         self.database_edit, self.database = QTextEdit(self), QLineEdit()
         self.database_edit.setReadOnly(True), self.database_edit.setMaximumSize(200, 20)
-        self.fname_database = 'supplementary/trainingdatabase/20170829_trainignsmatrix_corrected_norm-to-max.txt'
+
+        self.fname_database = os.getcwd() + '/supplementary/trainingdatabase/20170810_trainingsmatrix_corrected.txt'
         self.database_edit.append('trainingsmatrix_corrected'), self.database.setText(self.fname_database)
         self.database_edit.setFont(QFont('Helvetica Neue', fs_font)), self.database_edit.setAlignment(Qt.AlignRight)
 
@@ -234,7 +238,6 @@ class IntroPage(QWizardPage):
                                                           "supplementary/trainingdatabase")[0]
         if not self.fname_database:
             return
-
         self.read_database_name(self.fname_database)
         self.database_edit.setAlignment(Qt.AlignRight)
         self.database.setText(self.fname_database)
@@ -334,16 +337,18 @@ class SamplePage(QWizardPage):
         self.LED403_checkbox.stateChanged.connect(self.led2list)
         self.LED640_checkbox.stateChanged.connect(self.led2list)
 
-        #!!!TODO: what is the default list?
+        self.separation_edit.textEdited.connect(self.updateInfo)
+
         # define default lda settings
-        self.ls_LDAset = QLineEdit()
-        self.ls_LDAset.setText(','.join(ls_LDAset))
+        self.ls_LDAset, self.separation = QLineEdit(), QLineEdit()
+        self.ls_LDAset.setText(','.join(ls_LDAset)), self.separation.setText(self.separation_edit.text())
 
         # registered field for mandatory input
         self.xcoords = QLineEdit()
         self.registerField('LDA settings', self.ls_LDAset)
         self.registerField('LED selected', self.led_selected)
         self.registerField('xcoords*', self.xcoords)
+        self.registerField('separation', self.separation)
 
     def initUI(self):
         # LED checkboxes used for evaluation
@@ -530,13 +535,23 @@ class SamplePage(QWizardPage):
 
         # !!!TODO: something mandatory for self.registeredField to enable NEXT button only, when plot has been pressed
 
+        # Store parameter for further evaluation
+        global results
+        results = {'l': l_red, 'l_corr': l_corr_red, 'header': header, 'firstline': firstline, 'current': current,
+                   'date': date, 'blank_mean': blank_mean, 'blank_std': blank_std, 'blank_corr': blank_corr,
+                   'rg9_sample': rg9_sample, 'rg665_sample': rg665_sample, 'volume': volume, 'path': path,
+                   'full_calibration': full_calibration, 'kappa_spec': kappa_spec, 'correction': correction,
+                   'pumprate': pumprate, 'unit': unit_corr, 'device': device, 'name': sample_name,
+                   'unit_blank': unit_bl}
+                   # 'additional': additional --> False
+
     def para_prep(self):
         # pump rate
         pumprate = float(self.pump_edit.text())
 
         # get parameter settings for LDA
         para_lda = self.field('LDA settings').split(',')
-        print(525, para_lda)
+
         # optical correction such as ex/em correction, linear LED amplification
         if self.field('ex calibration'):
             # correction and kappa_spec
@@ -554,7 +569,7 @@ class SamplePage(QWizardPage):
             full_calibration = False if 'linear ampl' in para_lda else True
         else:
             correction, full_calibration = False, False
-            kappa_spec, fname_ex, device = None, None, None
+            kappa_spec, fname_ex, device = None, None, 0
 
         # blank / background correction
         blank_corr = True if 'blank correction' in para_lda else False
@@ -583,6 +598,9 @@ class SamplePage(QWizardPage):
             blank_mean_ex, blank_std_ex = None, None
 
         return kappa_spec, pumprate, device, correction, full_calibration, blank_corr, blank_mean_ex, blank_std_ex
+
+    def updateInfo(self):
+        self.separation.setText(self.separation_edit.text())
 
     def blank2nW(self):
         if self.unit_bl == 'nW':
@@ -617,12 +635,13 @@ class SamplePage(QWizardPage):
         for c, p in zip(color_LED, df):
             if df[p].dropna().empty is True:
                 df[p][np.isnan(df[p])] = 0
-                df[p].plot(ax=ax, color=c, linewidth=1)
+                df[p].plot(ax=ax, color=c, linewidth=0.6)
             else:
-                df[p].dropna().plot(ax=ax, color=c, label=p, linewidth=0.75)
+                df[p].dropna().plot(ax=ax, color=c, label=p, linewidth=0.6)
                 ylim_max[p] = df[p].dropna().max()
                 ylim_min[p] = df[p].dropna().min()
-        ax.legend(loc=0, ncol=1, frameon=True, fancybox=True, framealpha=0.25, fontsize=fs * 0.8)
+        leg = ax.legend(loc=0, ncol=1, frameon=True, fancybox=True, framealpha=0.25, fontsize=fs * 0.8)
+        leg.get_frame().set_linewidth(0.5)
 
         # Define plotting area. Default is 2 but if max value is higher it has to be rearranged
         y_max = ylim_max.max(axis=1).values[0] * 1.05
@@ -676,6 +695,8 @@ class SettingWindow(QDialog):
         self.linEx_box.stateChanged.connect(self.lda_set2field)
         self.peakLoD_box.stateChanged.connect(self.lda_set2field)
         self.dinophyta_box.stateChanged.connect(self.lda_set2field)
+        self.normalize_box.stateChanged.connect(self.lda_set2field)
+        self.standardize_box.stateChanged.connect(self.lda_set2field)
 
     def initUI(self):
         self.setWindowTitle("LDA options")
@@ -716,6 +737,16 @@ class SettingWindow(QDialog):
             self.dinophyta_box.setChecked(True)
         else:
             self.dinophyta_box.setChecked(False)
+        self.normalize_box = QCheckBox('Normalization', self)
+        if 'normalize' in ls_LDAset:
+            self.normalize_box.setChecked(True)
+        else:
+            self.normalize_box.setChecked(False)
+        self.standardize_box = QCheckBox('Standardization', self)
+        if 'standardize' in ls_LDAset:
+            self.standardize_box.setChecked(True)
+        else:
+            self.standardize_box.setChecked(False)
 
         # creating window layout
         mlayout2 = QVBoxLayout()
@@ -735,6 +766,8 @@ class SettingWindow(QDialog):
         grid_data.addWidget(self.linEx_box, 4, 0)
         grid_data.addWidget(self.peakLoD_box, 6, 0)
         grid_data.addWidget(self.dinophyta_box, 7, 0)
+        grid_data.addWidget(self.normalize_box, 8, 0)
+        grid_data.addWidget(self.standardize_box, 9, 0)
 
         ok_settings = QGroupBox("")
         grid_ok = QGridLayout()
@@ -765,6 +798,10 @@ class SettingWindow(QDialog):
             ls_lda.append('peak detection')
         if self.dinophyta_box.isChecked() is True:
             ls_lda.append('dinophyta')
+        if self.normalize_box.isChecked() is True:
+            ls_lda.append('normalize')
+        if self.standardize_box.isChecked() is True:
+            ls_lda.append('standardize')
 
         # update register field of lda settings
         self.ls_LDAset.setText(','.join(ls_lda))
@@ -782,13 +819,15 @@ class LDAPage(QWizardPage):
         super().__init__(parent)
         self.setTitle("LDA analysis")
         self.setSubTitle("... to be written")
+        self.mean_corr = None
 
         # load layout
         self.initUI()
 
         # connect button and checkbox with functions
-        self.plot3D_box1.stateChanged.connect(self.mpl_3Dplot)
-        self.plot2D_box1.stateChanged.connect(self.mpl_2Dplot)
+        self.plot3D_box1.stateChanged.connect(self.mpl_decision)
+        self.plot2D_box1.stateChanged.connect(self.mpl_decision)
+        self.histo_button.clicked.connect(self.plot_histo)
         self.run_button.clicked.connect(self.run_LDA)
 
     def initUI(self):
@@ -810,11 +849,9 @@ class LDAPage(QWizardPage):
         self.plot3D_box1 = QCheckBox('3D score plot', self)
         self.plot2D_box1 = QCheckBox('2D score plot', self)
         if '3D' in ls_LDAset:
-            self.plot3D_box1.setChecked(True)
-            self.plot2D_box1.setChecked(False)
+            self.plot3D_box1.setChecked(True), self.plot2D_box1.setChecked(False)
         else:
-            self.plot3D_box1.setChecked(False)
-            self.plot2D_box1.setChecked(True)
+            self.plot3D_box1.setChecked(False), self.plot2D_box1.setChecked(True)
 
         # ---------------------------------------------------------
         # creating window layout
@@ -830,7 +867,6 @@ class LDAPage(QWizardPage):
 
         # report table
         self.report = QTableWidget(self)
-        # !!!TODO: has to be updated
         self.report.setColumnCount(3), self.report.setRowCount(10)
         self.report.setHorizontalHeaderLabels([' ', 'identified class', 'probability [%]'])
         self.report.resizeColumnsToContents()
@@ -860,12 +896,10 @@ class LDAPage(QWizardPage):
         self.figScore = plt.figure(figsize=(7, 4))
         self.canvasScore = FigureCanvasQTAgg(self.figScore)
         if self.plot3D_box1.isChecked():
-            self.axScore = self.figScore.add_subplot(111, projection='3d')
-            print(861, '3D score plot')
-            plot_3DScore_empty(fig=self.figScore, ax=self.axScore)
+            plot_3DScore_empty(fig=self.figScore)
         else:
-            print(864, '2D score plot')
-            plot_2DScore_empty(fig=self.figScore, ax=self.axScore)
+            plot_2DScore_empty(fig=self.figScore)
+        self.figScore.canvas.draw()
 
         # create GroupBox to structure the layout
         score_grp = QGroupBox("Score plot")
@@ -875,7 +909,6 @@ class LDAPage(QWizardPage):
         # add GroupBox to layout and load buttons in GroupBox
         tbox_right.addWidget(score_grp)
         score_grp.setLayout(grid_score)
-
         grid_score.addWidget(self.canvasScore)
 
         # create GroupBox to structure the layout
@@ -886,10 +919,8 @@ class LDAPage(QWizardPage):
         # add GroupBox to layout and load buttons in GroupBox
         tbox_right.addWidget(scoreOp_grp)
         scoreOp_grp.setLayout(grid_scoreOp)
-
         grid_scoreOp.addWidget(self.plot3D_box1, 0, 0)
         grid_scoreOp.addWidget(self.plot2D_box1, 0, 1)
-
         scoreOp_grp.setContentsMargins(100, 5, 5, 5)
 
         # ------------------------------------------------------------
@@ -909,40 +940,286 @@ class LDAPage(QWizardPage):
         control_grp.setLayout(grid_crtl)
 
         grid_crtl.addWidget(self.histo_button, 0, 1)
-        grid_crtl.addWidget(self.run_button, 0, 2)
+        grid_crtl.addWidget(self.run_button, 0, 0)
         grid_crtl.addWidget(self.save_button, 0, 3)
         grid_crtl.addWidget(self.saveAll_button, 0, 4)
 
         # add grid(s) to main layout of wizard page
         self.setLayout(mlayout1)
 
-    def mpl_3Dplot(self):
-        self.figScore.clear()
-        if self.plot3D_box1.isChecked() is False and self.plot2D_box1.isChecked() is False:
-            self.plot2D_box1.setChecked(True)
-            print(950, 'plot 2D')
-        elif self.plot3D_box1.isChecked() is True and self.plot2D_box1.isChecked() is True:
-            self.plot2D_box1.setChecked(False)
-            print(953, 'plot 3D')
-        else:
-            pass
+    def mpl_decision(self, state):
+        if state == Qt.Checked:
 
-    def mpl_2Dplot(self):
-        self.figScore.clear()
-        if self.plot3D_box1.isChecked() is False and self.plot2D_box1.isChecked() is False:
-            self.plot3D_box1.setChecked(True), self.plot2D_box1.setChecked(False)
-            print(961, 'plot 2D')
-        elif self.plot3D_box1.isChecked() is True and self.plot2D_box1.isChecked() is True:
-            self.plot3D_box1.setChecked(False), self.plot2D_box1.setChecked(True)
-            print(964, 'plot 2D')
-            # self.plot_2DScore_empty()
+            # if 3D check box is selected
+            if self.sender() == self.plot3D_box1:
+                # making other check box to uncheck
+                self.plot2D_box1.setChecked(False)
+                self.figScore.clear()
+                self.figScore = plot_3DScore_empty(fig=self.figScore)
+
+            # if 2D check box is selected
+            elif self.sender() == self.plot2D_box1:
+                # making other check box to uncheck
+                self.plot3D_box1.setChecked(False)
+                self.figScore.clear()
+                self.figScore = plot_2DScore_empty(fig=self.figScore)
+            sns.despine()
             self.figScore.canvas.draw()
-        else:
+
+    def plot_histo(self):
+        global wHisto
+        wHisto = HistoWindow(self.mean_corr)
+        if wHisto.isVisible():
             pass
+        else:
+            wHisto.show()
 
     def run_LDA(self):
-        print(877, 'do something')
-        print(878, self.field('LDA settings'))
+        led_str = self.field('LED selected')
+        ls_led = [int(i) for i in led_str.split(',')]
+
+        # get training data base
+        [self.training_corr_red_sort, training,
+         self.training_red] = algae.training_database(trainings_path=self.field("Database"), led_used=ls_led)
+
+        # information for training data. Which separation level is chosen?
+        [classes_dict, color_dict, colorclass_dict,
+         genus_names] = algae.separation_level(separation=self.field('separation'))
+
+        # data correction
+        peak = True if 'peak detection' in self.field('LDA settings') else False
+        xcoords = [float(i) for i in self.field('xcoords')[1:-1].split(',')]
+        [c, peak, self.mean_corr,
+         LoD] = algae.correction_sample(l=results['l'], peak_detection=peak, led_total=led_selected, xcoords=xcoords,
+                                        device=results['device'], date=results['date'], blank_std=results['blank_std'],
+                                        header=results['header'], current=results['current'], volume=results['volume'],
+                                        full_calibration=results['full_calibration'], unit_blank=results['unit_blank'],
+                                        blank_mean=results['blank_mean'], blank_corr=results['blank_corr'],
+                                        kappa_spec=results['kappa_spec'], correction=results['correction'])
+
+        # calculate average fluorescence intensity at different excitation wavelengths of sample.
+        # standardize and normalize the values if it is done with the training-data
+        norm = True if 'normalize' in self.field('LDA settings') else False
+        stand = True if 'standardize' in self.field('LDA settings') else False
+        [mean_fluoro, training_corr,
+         pigment_pattern] = algae.average_fluorescence(mean_corr=self.mean_corr.T, normalize=norm, standardize=stand,
+                                                       training_corr_sort=self.training_corr_red_sort)
+
+        # evaluation of mean values or individual spike evaluation
+        self.score_type = 3 if self.plot3D_box1.isChecked() else 2
+        dino = True if 'dinophyta' in self.field('LDA settings') else False
+        if ['--'] in c.unique():
+            [self.lda, training_score, df_score,
+             number_components] = algae.lda_process_mean(mean_fluoro=mean_fluoro, training_corr=training_corr,
+                                                         unit=results['unit'], classes_dict=classes_dict,
+                                                         colorclass_dict=colorclass_dict, type_=self.score_type,
+                                                         separation=self.field('separation'), priority=dino)
+        else:
+            [self.lda, df_score, training_score,
+             number_components] = algae.lda_process_individual(l=results['l_corr'], training_corr=training_corr,
+                                                               classes_dict=classes_dict, volume=None, priority=dino,
+                                                               colorclass_dict=colorclass_dict, type_=self.score_type,
+                                                               pumprate=results['pumprate'], normalize=norm, LoD=LoD,
+                                                               separation=self.field('separation'))
+
+        if number_components <= 2:
+            type_ = 2
+            self.plot3D_box1.setChecked(False), self.plot2D_box1.setChecked(True)
+        else:
+            type_ = self.score_type
+
+        # decision function calculating the distance between sample and centroid of each class. prob_
+        # calculates the 3D gaussian probability that a sample belongs to a certain algal class
+        limit = 1E-6
+
+        d = algae.reference_scores(self.lda, training_score, classes_dict)
+        d_, prob = [], []
+        d_.append(algae.sample_distance(d, df_score))
+        [prob.append(algae.prob_(d_[el])) for el in range(len(df_score))]
+
+        # preparing the output-file
+        summary, summary_, sample, sample_plot = [], [], [], []
+        # load overview file for algal groups and group colors
+        df_phylum = 'supplementary/phytoplankton/170427_algae.txt'
+        phylum = 'supplementary/phytoplankton/170427_algalphylum.txt'
+        alg_group = pd.read_csv(df_phylum, sep='\t', encoding="latin-1")
+        alg_phylum = pd.read_csv(phylum, sep='\t', header=None, encoding="latin-1", usecols=[1, 2],
+                                 index_col=0).drop_duplicates()
+        phyl_group = pd.DataFrame(np.zeros(shape=(0, 2)), columns=['phylum_label', 'color'])
+
+        for el in range(len(prob)):
+            for k in range(len(prob[0])):
+                if prob[el].values[k][0] > limit:
+                    sample.append(el)
+                    summary.append(prob[el].index[k])
+                    summary_.append(float(prob[el].values[k]))
+
+                    if el not in sample_plot:
+                        sample_plot.append(el)
+                        color = d['LDA1'].copy()
+
+                        for coords in d.index:
+                            color[coords] = colorclass_dict[coords]
+
+                        if type_ == 2:
+                            # 2D Plot activated
+                            self.figScore.clear()
+                            self.axScore = self.figScore.add_subplot(111)
+                            self.axScore.set_xlabel('LDA 1', fontsize=fs, labelpad=10)
+                            self.axScore.set_ylabel('LDA 2', fontsize=fs, labelpad=10)
+                            self.figScore.subplots_adjust(left=0.12, right=0.9, bottom=0.18, top=0.85)
+                            self.figScore.canvas.draw()
+                            plot_distribution_2d(df_score=df_score.loc[df_score.index[el], :], alg_group=alg_group,
+                                                 color=color, alg_phylum=alg_phylum, phyl_group=phyl_group, d=d,
+                                                 f=self.figScore, ax=self.axScore, separation=self.field('separation'))
+                        elif type_ == 3:
+                            self.figScore.clear()
+                            self.axScore = self.figScore.gca(projection='3d')
+                            self.figScore.canvas.draw()
+                            plot_distribution_3d(df_score=df_score.loc[df_score.index[el], :], alg_group=alg_group,
+                                                 color=color, alg_phylum=alg_phylum, phyl_group=phyl_group, d=d,
+                                                 f=self.figScore, ax=self.axScore, separation=self.field('separation'))
+
+                    else:
+                        color = d['LDA1'].copy()
+                        for coords in d.index:
+                            color[coords] = colorclass_dict[coords]
+
+        [self.res, self.prob_phylum] = algae.output(sample, sample_plot, summary, summary_, date=results['date'],
+                                                    name=results['name'], prob=prob, separation=self.field('separation'),
+                                                    path=None, save=False)
+        # add score results
+        for i in range(len(self.res.index)):
+            it1 = QTableWidgetItem(str(self.res.loc[self.res.index[i], self.res.columns[0]]))
+            self.report.setItem(i, 0, it1)
+            it1.setTextAlignment(0 | 2), it1.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
+            it2 = QTableWidgetItem(str(self.res.loc[self.res.index[i], self.res.columns[1]]))
+            self.report.setItem(i, 1, it2)
+            it2.setTextAlignment(0 | 2), it2.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
+            it3 = QTableWidgetItem(str(self.res.loc[self.res.index[i], self.res.columns[2]]))
+            self.report.setItem(i, 2, it3)
+            it3.setTextAlignment(0 | 2), it3.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
+
+        self.report.resizeColumnsToContents()
+        self.report.resizeRowsToContents()
+
+class HistoWindow(QDialog):
+    def __init__(self, mean):
+        super().__init__()
+        self.mean = mean
+        self.initUI()
+
+        if self.mean is not None:
+            self.plot_histogram(self.mean.T, self.ax_histo, self.fig_histo)
+
+        # when checkbox selected, save information in registered field
+        self.close_button.clicked.connect(self.close_window)
+        self.saveH_button.clicked.connect(self.save_histogram)
+
+    def initUI(self):
+        self.setWindowTitle("Histogram - pigment pattern")
+        self.setGeometry(650, 180, 600, 500) # x,y position | width , height
+
+        # close window button
+        self.close_button = QPushButton('OK', self)
+        self.close_button.setFixedWidth(100), self.close_button.setFont(QFont('Helvetica Neue', fs_font))
+        self.saveH_button = QPushButton('Save', self)
+        self.saveH_button.setFixedWidth(100), self.saveH_button.setFont(QFont('Helvetica Neue', fs_font))
+
+        # histogram figure plot
+        self.fig_histo, self.ax_histo = plt.subplots()
+        self.canvas_histo = FigureCanvasQTAgg(self.fig_histo)
+        self.ax_histo.set_xlim(0, 8)
+        self.ax_histo.set_xticks([0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5])
+        self.led_selection = ['380 nm', '403 nm', '438 nm', '453 nm', '472 nm', '526 nm', '593 nm', '640 nm']
+        self.ax_histo.set_xticklabels(self.led_selection, rotation=15)
+        self.ax_histo.tick_params(axis='x', which='both', labelsize=fs, width=.3, length=2.5)
+        self.ax_histo.tick_params(axis='y', which='both', labelsize=fs, width=.3, length=2.5)
+        self.ax_histo.set_xlabel('Wavelength / nm', fontsize=fs)
+        self.ax_histo.set_ylabel('Relative signal intensity / rfu', fontsize=fs)
+        self.fig_histo.subplots_adjust(left=0.15, right=0.95, bottom=0.2, top=0.9)
+        self.fig_histo.canvas.draw()
+        sns.despine()
+
+        # creating window layout
+        mlayout2 = QVBoxLayout()
+        vbox2_top, vbox2_middle, vbox2_bottom = QHBoxLayout(), QHBoxLayout(), QHBoxLayout()
+        mlayout2.addLayout(vbox2_top), mlayout2.addLayout(vbox2_middle), mlayout2.addLayout(vbox2_bottom)
+
+        histo_grp = QGroupBox("Pigment pattern")
+        grid_plot = QGridLayout()
+        histo_grp.setFont(QFont('Helvetica Neue', 12))
+        vbox2_top.addWidget(histo_grp)
+        histo_grp.setLayout(grid_plot)
+
+        # include widgets in the layout
+        grid_plot.addWidget(self.canvas_histo, 0, 0)
+
+        # ------------------------------------------------------------
+        # draw additional "line" to separate navigation/control buttons from plot
+        hline = QFrame()
+        hline.setFrameShape(QFrame.HLine | QFrame.Raised)
+        hline.setLineWidth(2)
+        vbox2_middle.addWidget(hline)
+
+        # ------------------------------------------------------------
+        # create GroupBox to structure the layout
+        button_grp = QGroupBox("")
+        grid_button = QGridLayout()
+        button_grp.setFont(QFont('Helvetica Neue', 12))
+        vbox2_bottom.addWidget(button_grp)
+        button_grp.setLayout(grid_button)
+
+        # include widgets in the layout
+        grid_button.addWidget(self.saveH_button, 0, 1)
+        grid_button.addWidget(self.close_button, 0, 0)
+
+        # add everything to the window layout
+        self.setLayout(mlayout2)
+
+    def plot_histogram(self, mean, ax, f):
+        # plot histogram: Relative intensity @ different excitation LEDs.
+        mean = mean.sort_index()
+
+       # prepare general information about the sample and the setup
+        LED_color, LED_wl = [], []
+        for i in mean.index:
+            if type(i) == str:
+                j = i + ' nm' if len(i.split(' ')) == 1 else i
+            else:
+                j = str(i) + ' nm'
+            LED_wl.append(j)
+            LED_color.append(led_color_dict[j])
+
+        mean.index = LED_wl
+
+        # normalize mean
+        means = mean / mean.max()
+        for i in means.index:
+            if (means.loc[i, :].values[0]) < 0:
+                means.loc[i, :].values[0] = 0
+
+        self.led_total = pd.DataFrame(self.led_selection)
+        x = []
+        for i in mean.index:
+            x.append(self.led_total[self.led_total[0] == i].index[0])
+
+        for k, l in enumerate(mean.index):
+            ax.bar(x[k]+0.5, means.loc[l, :], width=0.9, color=LED_color[k])
+        ax.set_xticks([0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5])
+        ax.set_xticklabels(mean.index)
+        ax.xaxis.grid(False)
+        plt.setp(ax.get_xticklabels(), rotation=45, ha='center')
+
+        ax.set_xlabel('Wavelength / nm'), ax.set_ylabel('Relative signal intensity / rfu')
+        f.subplots_adjust(bottom=0.28, left=0.15), sns.despine()
+        f.canvas.draw()
+
+    def save_histogram(self):
+        print('enable saving')
+
+    def close_window(self):
+        self.hide()
 
 
 def plot_3DScore_empty(fig=None, ax=None):
@@ -951,7 +1228,6 @@ def plot_3DScore_empty(fig=None, ax=None):
     if ax is None:
         ax = fig.add_subplot(111, projection='3d')
 
-    ax = plt.gca()
     ax.set_xlabel('LDA 1', fontsize=fs, labelpad=-7.5)
     ax.set_ylabel('LDA 2', fontsize=fs, labelpad=-7.5)
     ax.set_zlabel('LDA 3', fontsize=fs, labelpad=-5)
@@ -959,8 +1235,80 @@ def plot_3DScore_empty(fig=None, ax=None):
     ax.tick_params(axis='y', which='both', labelsize=fs, width=.3, length=2.5, pad=-2.5)
     ax.tick_params(axis='z', which='both', labelsize=fs, width=.3, length=2.5, pad=0)
     ax.view_init(elev=20., azim=-30)
-    fig.tight_layout()
-    sns.despine()
+    fig.tight_layout(pad=0.5), sns.despine()
+    return fig
+
+
+def plot_distribution_3d(f, ax, d, df_score, color, alg_group, alg_phylum, phyl_group, separation):
+    ax.cla()
+    # preparation of figure plot
+    if ax is None:
+        f = plt.figure()
+        ax = f.gca(projection='3d')
+        ax.set_aspect('auto')
+    # initial view of score plot to enhance the separation of algae and cyanos
+    ax.view_init(elev=20., azim=-30)
+    ax.set_xlabel('LDA 1', fontsize=fs, labelpad=-7.5)
+    ax.set_ylabel('LDA 2', fontsize=fs, labelpad=-7.5)
+    ax.set_zlabel('LDA 3', fontsize=fs, labelpad=-5)
+    ax.tick_params(axis='x', which='both', labelsize=fs, width=.3, length=2.5, pad=-3.)
+    ax.tick_params(axis='y', which='both', labelsize=fs, width=.3, length=2.5, pad=-2.5)
+    ax.tick_params(axis='z', which='both', labelsize=fs, width=.3, length=2.5, pad=0)
+
+    # plotting the centers of each algal class
+    c = d.columns
+    [ax.scatter(d.loc[el, c[0]], d.loc[el, c[1]], d.loc[el, c[2]], marker='.', fc=color[el], lw=0.5, ec='k', s=5) for el in d.index]
+
+    # calculate the standard deviation within one class to built up a solid (sphere with 3 different radii)
+    # around the centroid using spherical coordinates
+    for i in d.index:
+        # replace sample name (phyl_group.index) with phylum name (in phyl_group['phylum_label'])
+        phyl = alg_group[alg_group[separation] == i]['phylum'].values[0]
+        if phyl in phyl_group['phylum_label'].values:
+            pass
+        else:
+            phyl_group.loc[i, 'phylum_label'] = phyl
+            phyl_group.loc[i, 'color'] = alg_phylum.loc[phyl, :].values
+
+        rx = np.sqrt(d['LDA1var'].loc[i])
+        ry = np.sqrt(d['LDA2var'].loc[i])
+        rz = np.sqrt(d['LDA3var'].loc[i])
+        c_x = d.loc[i]['LDA1']
+        c_y = d.loc[i]['LDA2']
+        c_z = d.loc[i]['LDA3']
+
+        u, v = np.mgrid[0:2 * np.pi:10j, 0:np.pi:20j]
+        x = rx * np.cos(u) * np.sin(v) + c_x
+        y = ry * np.sin(u) * np.sin(v) + c_y
+        z = rz * np.cos(v) + c_z
+        ax.plot_wireframe(x, y, z, color=color[i], alpha=0.5, linewidth=0.75, label=phyl)
+
+        x1 = 2 * rx * np.cos(u) * np.sin(v) + c_x
+        y1 = 2 * ry * np.sin(u) * np.sin(v) + c_y
+        z1 = 2 * rz * np.cos(v) + c_z
+        ax.plot_wireframe(x1, y1, z1, color=color[i], alpha=0.2, linewidth=0.5)
+
+        x2 = 3 * rx * np.cos(u) * np.sin(v) + c_x
+        y2 = 3 * ry * np.sin(u) * np.sin(v) + c_y
+        z2 = 3 * rz * np.cos(v) + c_z
+        ax.plot_wireframe(x2, y2, z2, color=color[i], alpha=0.15, linewidth=0.15)
+
+    patch = []
+    for i in phyl_group.index:
+        col = phyl_group.loc[i, 'color'][0] if isinstance(phyl_group.loc[i, 'color'], np.ndarray) else\
+            phyl_group.loc[i, 'color']
+        patch.append(mpatches.Patch(color=col, linewidth=0.1, label=phyl_group.loc[i, 'phylum_label']))
+        leg = ax.legend(handles=patch, loc="upper center", bbox_to_anchor=(0., 0.9), frameon=True, fancybox=True,
+                        fontsize=fs * 0.6)
+        leg.get_frame().set_linewidth(0.1)
+
+    # plotting the sample scores
+    df_score = pd.DataFrame(df_score)
+    for i in df_score.columns:
+        ax.scatter(df_score.loc['LDA1', i], df_score.loc['LDA2', i], df_score.loc['LDA3', i], marker='^', s=10,
+                   color='gold', label='')
+    f.tight_layout(pad=0.5), sns.despine()
+    f.canvas.draw()
 
 
 def plot_2DScore_empty(fig=None, ax=None):
@@ -968,13 +1316,71 @@ def plot_2DScore_empty(fig=None, ax=None):
         fig = plt.figure(figsize=(7, 4))
     if ax is None:
         ax = fig.add_subplot(111)
-    ax = plt.gca()
-    ax.set_xlabel('LDA 1', fontsize=fs, labelpad=-7.5)
-    ax.set_ylabel('LDA 2', fontsize=fs, labelpad=-7.5)
-    ax.tick_params(axis='x', which='both', labelsize=fs, width=.3, length=2.5, pad=-3.)
-    ax.tick_params(axis='y', which='both', labelsize=fs, width=.3, length=2.5, pad=-2.5)
-    fig.tight_layout()
-    sns.despine()
+    # ax = plt.gca()
+    ax.set_xlabel('LDA 1', fontsize=fs)
+    ax.set_ylabel('LDA 2', fontsize=fs)
+    ax.tick_params(axis='x', which='both', labelsize=fs, width=.3, length=2.5)
+    ax.tick_params(axis='y', which='both', labelsize=fs, width=.3, length=2.5)
+    fig.tight_layout(pad=2), sns.despine()
+    return fig
+
+
+def plot_distribution_2d(f, ax, d, df_score, color, alg_group, alg_phylum, phyl_group, separation):
+    ax.cla()
+    # preparation of figure plot
+    if ax is None:
+        f, ax = plt.subplots(figsize=(7, 4))
+    ax.set_xlabel('LDA 1', fontsize=fs)
+    ax.set_ylabel('LDA 2', fontsize=fs)
+    ax.tick_params(axis='x', which='both', labelsize=fs, width=.3, length=2.5)
+    ax.tick_params(axis='y', which='both', labelsize=fs, width=.3, length=2.5)
+
+    # plotting the centers of each algal class
+    [ax.scatter(d.loc[el, 'LDA1'], d.loc[el, 'LDA2'], facecolor=color[el], lw=0.15, ec='k', marker='.', s=5) for el in d.index]
+
+    # calculate the standard deviation within one class to built up a solid (sphere with 3 different radii)
+    # around the centroid using spherical coordinates
+    for i in d.index:
+        # replace sample name (phyl_group.index) with phylum name (in phyl_group['phylum_label'])
+        phyl = alg_group[alg_group[separation] == i]['phylum'].values[0]
+        if phyl in phyl_group['phylum_label'].values:
+            pass
+        else:
+            phyl_group.loc[i, 'phylum_label'] = phyl
+            phyl_group.loc[i, 'color'] = alg_phylum.loc[phyl, :].values
+
+        rx = np.sqrt(d['LDA1var'].loc[i])
+        ry = np.sqrt(d['LDA2var'].loc[i])
+        c_x = d.loc[i]['LDA1']
+        c_y = d.loc[i]['LDA2']
+        ells = Ellipse(xy=[c_x, c_y], width=rx, height=ry, angle=0, edgecolor=color[i], lw=0.75, facecolor=color[i],
+                       alpha=0.6, label=i)
+        ax.add_artist(ells)
+
+        ells2 = Ellipse(xy=[c_x, c_y], width=2 * rx, height=2 * ry, angle=0, edgecolor=color[i], lw=0.5, alpha=0.4,
+                        facecolor=color[i])
+        ax.add_artist(ells2)
+
+        ells3 = Ellipse(xy=[c_x, c_y], width=3 * rx, height=3 * ry, angle=0, edgecolor=color[i], lw=0.25, alpha=0.1,
+                        facecolor=color[i])
+        ax.add_artist(ells3)
+
+    # patch = pd.DataFrame(np.zeros(shape=(len(phyl_group), 2)), index=phyl_group.index)
+    patch = []
+    for i in phyl_group.index:
+        col = phyl_group.loc[i, 'color'][0] if isinstance(phyl_group.loc[i, 'color'], np.ndarray) else \
+            phyl_group.loc[i, 'color']
+        patch.append(mpatches.Patch(color=col, linewidth=0., label=phyl_group.loc[i, 'phylum_label']))
+        leg = ax.legend(handles=patch, loc="upper center", bbox_to_anchor=(1.2, 0.9), frameon=True, fancybox=True,
+                        fontsize=fs*0.6)
+        leg.get_frame().set_linewidth(0.1)
+
+    # plotting the sample scores
+    df_score = pd.DataFrame(df_score)
+    for i in df_score.columns:
+        ax.scatter(df_score.loc['LDA1', i], df_score.loc['LDA2', i], marker='^', s=10, color='gold', label='')
+    f.tight_layout(pad=0.5), sns.despine()
+    f.canvas.draw()
 
 
 # -----------------------------------------------------------------------------------------------------------------
