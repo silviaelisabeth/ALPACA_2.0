@@ -6,7 +6,5 @@ To access the software, you may download the python script (GUI_wizard.py and GU
 
 
 Further information:
-
 DOI: 10.1021/acs.est.8b04528
-
 DOI: 10.1021/acs.est.8b00578
