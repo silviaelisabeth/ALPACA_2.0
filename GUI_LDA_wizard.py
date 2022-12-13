@@ -3,7 +3,6 @@ __project__ = 'SCHeMA_GUI_LDA'
 
 import matplotlib
 matplotlib.use('Qt5Agg')
-import GUI_LDA_functions as algae
 import sys
 import matplotlib.pyplot as plt
 from PyQt5 import QtCore, QtWidgets
@@ -16,35 +15,35 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
 from PyQt5.QtCore import *
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT, FigureCanvasQTAgg
-import pandas as pd
-import numpy as np
-import seaborn as sns
-import os
 from matplotlib.patches import Ellipse
 import matplotlib.patches as mpatches
+import seaborn as sns
+from datetime import datetime
+import pandas as pd
+import numpy as np
+import os
+
+import GUI_LDA_functions as algae
 
 # global parameter
 sns.set_context('paper', font_scale=.5, rc={"lines.linewidth": .25, "axes.linewidth": 0.25, "grid.linewidth": 0.25})
 sns.set_style('ticks', {"xtick.direction": "in", "ytick.direction": "in"})
 
+
 # global layout parameters
-fs = 5          # font size in plot figures
-fs_font = 11    # font size for buttons, etc. in window layout
-#led_color_dict = {"380 nm": '#610061', "403 nm": '#8300BC', "438 nm": '#0A00FF', "453 nm": '#0057FF',
-#                  "472 nm": '#00AEFF', "526 nm": '#00FF17', "544 nm": '#8CFF00', "593 nm": '#FFD500',
-#                  "640 nm": '#FF2100'}
-led_color_dict = {"380 nm": '#610061', "403 nm": '#951BC9', "438 nm": '#0801DF', "453 nm": '#0057FF',
-                  "472 nm": '#00AEFF', "526 nm": '#00E013', "544 nm": ' #87F500', "593 nm": '#FFD500',
+fs, fs_font, fs_grp = 5, 11, 10        # font size in plot figures | buttons and text | group labels
+font_button, font_bod = 'Helvetica Neue', 'Arimo'
+led_color_dict = {"380 nm": '#610061', "403 nm": '#8300BC', "438 nm": '#0A00FF', "453 nm": '#0057FF',
+                  "472 nm": '#00AEFF', "526 nm": '#00FF17', "544 nm": '#8CFF00', "593 nm": '#FFD500',
                   "640 nm": '#FF2100'}
+
 # global parameters
 led_selected = ['526', '438', '593', '453', '380', '472', '403', '640']
-ls_LDAset = ['blank correction', 'optical correction', 'LED linear ampl', 'peak detection', 'dinophyta', '3D',
-             'normalize', 'standardize']
+ls_LDAset = ['blank correction', 'optical correction', 'LED linear ampl', 'peak detection', 'dinophyta', '3D']
+loaded_data, xcoords, results = dict(), list(), dict()
 
-results = dict()
-
-# !!!TODO: resize pages
-# !!! TODO: requirements to allow nextID
+# global parameter for saving
+save_type = ['tiff', 'eps', 'jpg']
 
 
 class QIComboBox(QComboBox):
@@ -61,6 +60,8 @@ class MagicWizard(QWizard):
         self.setPage(2, self.sample_project)
         self.LDA_project = LDAPage()
         self.setPage(3, self.LDA_project)
+        self.final = FinalPage()
+        self.setPage(4, self.final)
 
         # set start page
         self.setStartId(1)
@@ -72,6 +73,12 @@ class MagicWizard(QWizard):
         # define Wizard style and certain options
         self.setWizardStyle(QWizard.MacStyle)
         self.setOptions(QtWidgets.QWizard.NoCancelButtonOnLastPage | QtWidgets.QWizard.HaveFinishButtonOnEarlyPages)
+
+        # add a background image
+        path = os.path.join('/Users/au652733/Python/ALPACA/logo/', 'logo_ALPACA1.png')
+        pixmap = QtGui.QPixmap(path)
+        pixmap = pixmap.scaled(200, 200, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+        self.setPixmap(QWizard.BackgroundPixmap, pixmap)
 
 
 class IntroPage(QWizardPage):
@@ -102,45 +109,47 @@ class IntroPage(QWizardPage):
     def initUI(self):
         # create buttons to load data
         self.load_sample_button = QPushButton('Load sample', self)
-        self.load_sample_button.setMaximumWidth(150), self.load_sample_button.setFont(QFont('Helvetica Neue', fs_font))
+        self.load_sample_button.setMaximumWidth(150)
+        self.load_sample_button.setFont(QFont(font_button, fs_font))
         self.load_blank_button = QPushButton('Load blank', self)
-        self.load_blank_button.setMaximumWidth(150), self.load_blank_button.setFont(QFont('Helvetica Neue', fs_font))
+        self.load_blank_button.setMaximumWidth(150)
+        self.load_blank_button.setFont(QFont(font_button, fs_font))
         self.load_database_button = QPushButton('Load database', self)
         self.load_database_button.setMaximumWidth(150)
-        self.load_database_button.setFont(QFont('Helvetica Neue', fs_font))
+        self.load_database_button.setFont(QFont(font_button, fs_font))
         self.load_ex_correction_button = QPushButton('Ex-correction sample', self)
         self.load_ex_correction_button.setMaximumWidth(150)
-        self.load_ex_correction_button.setFont(QFont('Helvetica Neue', fs_font))
+        self.load_ex_correction_button.setFont(QFont(font_button, fs_font))
         self.load_em_correction_button = QPushButton('Em-correction sample', self)
         self.load_em_correction_button.setMaximumWidth(150)
-        self.load_em_correction_button.setFont(QFont('Helvetica Neue', fs_font))
+        self.load_em_correction_button.setFont(QFont(font_button, fs_font))
         self.reset_button = QPushButton('Reset', self)
         self.reset_button.setMaximumWidth(150)
-        self.reset_button.setFont(QFont('Helvetica Neue', fs_font))
+        self.reset_button.setFont(QFont(font_button, fs_font))
 
         # Text-box displaying chosen files
         self.sample_edit = QTextEdit(self)
         self.sample_edit.setReadOnly(True), self.sample_edit.setMaximumSize(200, 20)
-        self.sample_edit.setFont(QFont('Helvetica Neue', fs_font))
+        self.sample_edit.setFont(QFont(font_button, fs_font))
 
         self.blank_edit = QTextEdit(self)
         self.blank_edit.setReadOnly(True), self.blank_edit.setMaximumSize(200, 20)
-        self.blank_edit.setFont(QFont('Helvetica Neue', fs_font))
+        self.blank_edit.setFont(QFont(font_button, fs_font))
 
         self.database_edit, self.database = QTextEdit(self), QLineEdit()
         self.database_edit.setReadOnly(True), self.database_edit.setMaximumSize(200, 20)
 
         self.fname_database = os.getcwd() + '/supplementary/trainingdatabase/20170810_trainingsmatrix_corrected.txt'
         self.database_edit.append('trainingsmatrix_corrected'), self.database.setText(self.fname_database)
-        self.database_edit.setFont(QFont('Helvetica Neue', fs_font)), self.database_edit.setAlignment(Qt.AlignRight)
+        self.database_edit.setFont(QFont(font_button, fs_font)), self.database_edit.setAlignment(Qt.AlignRight)
 
         self.ex_correction_edit = QTextEdit(self)
         self.ex_correction_edit.setReadOnly(True), self.ex_correction_edit.setMaximumSize(200, 20)
-        self.ex_correction_edit.setFont(QFont('Helvetica Neue', fs_font))
+        self.ex_correction_edit.setFont(QFont(font_button, fs_font))
 
         self.em_correction_edit = QTextEdit(self)
         self.em_correction_edit.setReadOnly(True), self.em_correction_edit.setFixedSize(200, 20)
-        self.em_correction_edit.setFont(QFont('Helvetica Neue', fs_font))
+        self.em_correction_edit.setFont(QFont(font_button, fs_font))
 
         # ----------------------------------------------------------------------------------
         # creating main window (GUI)
@@ -154,7 +163,7 @@ class IntroPage(QWizardPage):
         path_group = QGroupBox("File paths")
         grid_load = QGridLayout()
         path_group.setFixedSize(500, 275)
-        path_group.setFont(QFont('Helvetica Neue', 12))
+        path_group.setFont(QFont(font_button, fs_grp))
         vbox_top.addWidget(path_group)
         path_group.setLayout(grid_load)
 
@@ -184,10 +193,11 @@ class IntroPage(QWizardPage):
         self.registerField("Data*", self.fname_sample)
 
     def open_sample(self):
-        self.fname = QFileDialog.getOpenFileName(self, "Select a measurement file", 'measurement/')[0]
-        if not self.fname:
+        fname = QFileDialog.getOpenFileName(parent=self, caption='Select a measurement file', directory='measurement/',
+                                            filter='csv(*.csv *.txt)', initialFilter='csv(*.csv, *.txt)')[0]
+        if not fname:
             return
-        self.read_sample_name(self.fname)
+        self.read_sample_name(fname)
         self.sample_edit.setAlignment(Qt.AlignRight)
 
     def read_sample_name(self, fname):
@@ -317,7 +327,12 @@ class SamplePage(QWizardPage):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setTitle("Time-drive selection")
-        self.setSubTitle("... to be written")
+        self.setSubTitle("Before we get to the actual analysis,  you need to select the time interval in which you "
+                         "want to analyze the relative phytoplankton composition.  While pressing the COMMAND key,  "
+                         "click in the time-drive plot and first select the start/end point of the phytoplankton "
+                         "signal.  Then you can additionally select the start/end point of the background signal if "
+                         "you want to account for it as well. \nUnder SETTINGS,  you may adjust parameters for the "
+                         "analysis.")
 
         # creating the layout / grid of the wizard page
         self.initUI()
@@ -339,6 +354,7 @@ class SamplePage(QWizardPage):
 
         self.separation_edit.textEdited.connect(self.updateInfo)
 
+        #!!!TODO: what is the default list?
         # define default lda settings
         self.ls_LDAset, self.separation = QLineEdit(), QLineEdit()
         self.ls_LDAset.setText(','.join(ls_LDAset)), self.separation.setText(self.separation_edit.text())
@@ -353,35 +369,35 @@ class SamplePage(QWizardPage):
     def initUI(self):
         # LED checkboxes used for evaluation
         self.LED526_checkbox = QCheckBox('526 nm', self)
-        self.LED526_checkbox.toggle(), self.LED526_checkbox.setFont(QFont('Helvetica Neue', fs_font))
+        self.LED526_checkbox.toggle(), self.LED526_checkbox.setFont(QFont(font_button, int(fs_font*0.8)))
         self.LED438_checkbox = QCheckBox('438 nm', self)
-        self.LED438_checkbox.toggle(), self.LED438_checkbox.setFont(QFont('Helvetica Neue', fs_font))
+        self.LED438_checkbox.toggle(), self.LED438_checkbox.setFont(QFont(font_button, int(fs_font*0.8)))
         self.LED593_checkbox = QCheckBox('593 nm', self)
-        self.LED593_checkbox.toggle(), self.LED593_checkbox.setFont(QFont('Helvetica Neue', fs_font))
+        self.LED593_checkbox.toggle(), self.LED593_checkbox.setFont(QFont(font_button, int(fs_font*0.8)))
         self.LED453_checkbox = QCheckBox('453 nm', self)
-        self.LED453_checkbox.toggle(), self.LED453_checkbox.setFont(QFont('Helvetica Neue', fs_font))
+        self.LED453_checkbox.toggle(), self.LED453_checkbox.setFont(QFont(font_button, int(fs_font*0.8)))
         self.LED380_checkbox = QCheckBox('380 nm', self)
-        self.LED380_checkbox.toggle(), self.LED380_checkbox.setFont(QFont('Helvetica Neue', fs_font))
+        self.LED380_checkbox.toggle(), self.LED380_checkbox.setFont(QFont(font_button, int(fs_font*0.8)))
         self.LED472_checkbox = QCheckBox('472 nm', self)
-        self.LED472_checkbox.toggle(), self.LED472_checkbox.setFont(QFont('Helvetica Neue', fs_font))
+        self.LED472_checkbox.toggle(), self.LED472_checkbox.setFont(QFont(font_button, int(fs_font*0.8)))
         self.LED403_checkbox = QCheckBox('403 nm', self)
-        self.LED403_checkbox.toggle(), self.LED403_checkbox.setFont(QFont('Helvetica Neue', fs_font))
+        self.LED403_checkbox.toggle(), self.LED403_checkbox.setFont(QFont(font_button, int(fs_font*0.8)))
         self.LED640_checkbox = QCheckBox('640 nm', self)
-        self.LED640_checkbox.toggle(), self.LED640_checkbox.setFont(QFont('Helvetica Neue', fs_font))
+        self.LED640_checkbox.toggle(), self.LED640_checkbox.setFont(QFont(font_button, int(fs_font*0.8)))
 
         # setting button to specify analysis
         self.setting_button = QPushButton('Settings', self)
         self.setting_button.setMaximumWidth(150)
-        self.setting_button.setFont(QFont('Helvetica Neue', fs_font))
+        self.setting_button.setFont(QFont(font_button, fs_grp))
 
         # plot button to plot sample time drive
         self.plot_button = QPushButton('Plot', self)
         self.plot_button.setMaximumWidth(150)
-        self.plot_button.setFont(QFont('Helvetica Neue', fs_font))
+        self.plot_button.setFont(QFont(font_button, fs_grp))
 
         # LineEdit for pump rate and separation level
         pump_label, pump_unit = QLabel(self), QLabel(self)
-        pump_label.setFont(QFont('Helvetica Neue', fs_font)), pump_unit.setFont(QFont('Helvetica Neue', fs_font))
+        pump_label.setFont(QFont(font_button, fs_font)), pump_unit.setFont(QFont(font_button, fs_font))
         pump_label.setText('Pump rate')
         pump_unit.setText('mL/min')
         self.pump_edit = QLineEdit(self)
@@ -389,7 +405,7 @@ class SamplePage(QWizardPage):
         self.pump_edit.setText('1.5')
 
         separation_label = QLabel(self)
-        separation_label.setFont(QFont('Helvetica Neue', fs_font))
+        separation_label.setFont(QFont(font_button, fs_font))
         separation_label.setText('Separation level')
         self.separation_edit = QLineEdit(self)
         self.separation_edit.setValidator(QtGui.QDoubleValidator()), self.separation_edit.setAlignment(Qt.AlignRight)
@@ -406,7 +422,7 @@ class SamplePage(QWizardPage):
         led_selection = QGroupBox("LED selection for analysis")
         grid_led = QGridLayout()
         led_selection.setFixedSize(250, 150)
-        led_selection.setFont(QFont('Helvetica Neue', fs_font))
+        led_selection.setFont(QFont(font_button, fs_grp))
         vbox_left.addWidget(led_selection)
         led_selection.setLayout(grid_led)
 
@@ -422,7 +438,7 @@ class SamplePage(QWizardPage):
         para_group = QGroupBox("Parameter of choice")
         grid_para = QGridLayout()
         para_group.setFixedSize(250, 100)
-        para_group.setFont(QFont('Helvetica Neue', fs_font))
+        para_group.setFont(QFont(font_button, fs_grp))
         vbox_left.addWidget(para_group)
         para_group.setLayout(grid_para)
 
@@ -436,7 +452,7 @@ class SamplePage(QWizardPage):
         settings_group = QGroupBox("Navigation panel")
         grid_set = QGridLayout()
         settings_group.setFixedHeight(75)
-        settings_group.setFont(QFont('Helvetica Neue', fs_font))
+        settings_group.setFont(QFont(font_button, fs_grp))
         vbox_left.addWidget(settings_group)
         settings_group.setLayout(grid_set)
 
@@ -508,7 +524,7 @@ class SamplePage(QWizardPage):
         [kappa_spec, pumprate, device, correction, full_calibration, blank_corr, blank_mean_ex,
          blank_std_ex] = self.para_prep()
 
-        # Load data and correct them with prescan_load_file function.
+        # Load data and correct them
         [l, l_corr, header, firstline, current, date, sample_name, blank_mean, blank_std, blank_corrected,
          rg9_sample, rg665_sample, volume, pumprate, unit, unit_corr, unit_bl,
          path] = algae.prescan_load_file(filename=self.field("Data"), kappa_spec=kappa_spec, pumprate=pumprate,
@@ -532,18 +548,15 @@ class SamplePage(QWizardPage):
 
         # connect onclick event with function
         self.figS.canvas.mpl_connect('button_press_event', self.onclick_timedrive)
-
-        # !!!TODO: something mandatory for self.registeredField to enable NEXT button only, when plot has been pressed
-
-        # Store parameter for further evaluation
-        global results
-        results = {'l': l_red, 'l_corr': l_corr_red, 'header': header, 'firstline': firstline, 'current': current,
-                   'date': date, 'blank_mean': blank_mean, 'blank_std': blank_std, 'blank_corr': blank_corr,
-                   'rg9_sample': rg9_sample, 'rg665_sample': rg665_sample, 'volume': volume, 'path': path,
-                   'full_calibration': full_calibration, 'kappa_spec': kappa_spec, 'correction': correction,
-                   'pumprate': pumprate, 'unit': unit_corr, 'device': device, 'name': sample_name,
-                   'unit_blank': unit_bl}
-                   # 'additional': additional --> False
+        
+        # collect relevant parameter to transfer between pages
+        global loaded_data, ls_xcoords
+        loaded_data = {'l': l_red, 'l_corr': l_corr_red, 'header': header, 'firstline': firstline, 'path': path,
+                            'current': current, 'volume': volume, 'name': sample_name, 'date': date, 'unit': unit_corr,
+                            'blank_mean': blank_mean, 'blank_std': blank_std, 'unit_blank': unit_bl,
+                            'blank_corr': blank_corr, 'pumprate': pumprate, 'correction': correction,
+                            'rg9_sample': rg9_sample, 'rg665_sample': rg665_sample, 'full_calibration': full_calibration,
+                            'device': device, 'kappa_spec': kappa_spec, 'sep': self.separation_edit.text()}
 
     def para_prep(self):
         # pump rate
@@ -569,7 +582,7 @@ class SamplePage(QWizardPage):
             full_calibration = False if 'linear ampl' in para_lda else True
         else:
             correction, full_calibration = False, False
-            kappa_spec, fname_ex, device = None, None, 0
+            kappa_spec, fname_ex, device = None, None, None
 
         # blank / background correction
         blank_corr = True if 'blank correction' in para_lda else False
@@ -585,15 +598,9 @@ class SamplePage(QWizardPage):
                 # convert blank to nW
                 blank_mean_ex, blank_std_ex = self.blank2nW()
             else:
-                msgBox = QMessageBox()
-                msgBox.setIcon(QMessageBox.Warning)
-                msgBox.setText("Blank file missing for external blank correction. Please, provide file or deselect "
-                               "external blank correction in settings.")
-                msgBox.setFont(QFont('Helvetica Neue', 11))
-                msgBox.setWindowTitle("Error")
-                msgBox.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
-                msgBox.exec()
-                return
+                text = "Blank file missing for external blank correction. Please, provide file or deselect external " \
+                       "blank correction in settings."
+                feedback_user(text=text, icon=QMessageBox.Warning, title='Error')
         else:
             blank_mean_ex, blank_std_ex = None, None
 
@@ -635,13 +642,12 @@ class SamplePage(QWizardPage):
         for c, p in zip(color_LED, df):
             if df[p].dropna().empty is True:
                 df[p][np.isnan(df[p])] = 0
-                df[p].plot(ax=ax, color=c, linewidth=0.6)
+                df[p].plot(ax=ax, color=c, linewidth=1)
             else:
-                df[p].dropna().plot(ax=ax, color=c, label=p, linewidth=0.6)
+                df[p].dropna().plot(ax=ax, color=c, label=p, linewidth=0.75)
                 ylim_max[p] = df[p].dropna().max()
                 ylim_min[p] = df[p].dropna().min()
-        leg = ax.legend(loc=0, ncol=1, frameon=True, fancybox=True, framealpha=0.25, fontsize=fs * 0.8)
-        leg.get_frame().set_linewidth(0.5)
+        ax.legend(loc=0, ncol=1, frameon=True, fancybox=True, framealpha=0.25, fontsize=fs * 0.8)
 
         # Define plotting area. Default is 2 but if max value is higher it has to be rearranged
         y_max = ylim_max.max(axis=1).values[0] * 1.05
@@ -676,8 +682,10 @@ class SamplePage(QWizardPage):
         self.figS.canvas.draw()
 
         # add selected xdata to self.xcoords as str list
+        global xcoords
         if len(self.ls_xcoords) in (2, 4):
             self.xcoords.setText(str(self.ls_xcoords))
+            xcoords = list(self.ls_xcoords)
 
 
 class SettingWindow(QDialog):
@@ -695,8 +703,6 @@ class SettingWindow(QDialog):
         self.linEx_box.stateChanged.connect(self.lda_set2field)
         self.peakLoD_box.stateChanged.connect(self.lda_set2field)
         self.dinophyta_box.stateChanged.connect(self.lda_set2field)
-        self.normalize_box.stateChanged.connect(self.lda_set2field)
-        self.standardize_box.stateChanged.connect(self.lda_set2field)
 
     def initUI(self):
         self.setWindowTitle("LDA options")
@@ -704,7 +710,7 @@ class SettingWindow(QDialog):
 
         # close window button
         self.close_button = QPushButton('OK', self)
-        self.close_button.setFixedWidth(100), self.close_button.setFont(QFont('Helvetica Neue', fs_font))
+        self.close_button.setFixedWidth(100), self.close_button.setFont(QFont(font_button, fs_font))
 
         # checkboxes for possible data tables and figures to save
         self.blank_box = QCheckBox('blank correction', self)
@@ -737,16 +743,6 @@ class SettingWindow(QDialog):
             self.dinophyta_box.setChecked(True)
         else:
             self.dinophyta_box.setChecked(False)
-        self.normalize_box = QCheckBox('Normalization', self)
-        if 'normalize' in ls_LDAset:
-            self.normalize_box.setChecked(True)
-        else:
-            self.normalize_box.setChecked(False)
-        self.standardize_box = QCheckBox('Standardization', self)
-        if 'standardize' in ls_LDAset:
-            self.standardize_box.setChecked(True)
-        else:
-            self.standardize_box.setChecked(False)
 
         # creating window layout
         mlayout2 = QVBoxLayout()
@@ -755,7 +751,7 @@ class SettingWindow(QDialog):
 
         data_settings = QGroupBox("Data tables")
         grid_data = QGridLayout()
-        data_settings.setFont(QFont('Helvetica Neue', 12))
+        data_settings.setFont(QFont(font_button, fs_grp))
         vbox2_top.addWidget(data_settings)
         data_settings.setLayout(grid_data)
 
@@ -766,12 +762,10 @@ class SettingWindow(QDialog):
         grid_data.addWidget(self.linEx_box, 4, 0)
         grid_data.addWidget(self.peakLoD_box, 6, 0)
         grid_data.addWidget(self.dinophyta_box, 7, 0)
-        grid_data.addWidget(self.normalize_box, 8, 0)
-        grid_data.addWidget(self.standardize_box, 9, 0)
 
         ok_settings = QGroupBox("")
         grid_ok = QGridLayout()
-        ok_settings.setFont(QFont('Helvetica Neue', 12))
+        ok_settings.setFont(QFont(font_button, fs_grp))
         vbox2_bottom.addWidget(ok_settings)
         ok_settings.setLayout(grid_ok)
 
@@ -798,10 +792,6 @@ class SettingWindow(QDialog):
             ls_lda.append('peak detection')
         if self.dinophyta_box.isChecked() is True:
             ls_lda.append('dinophyta')
-        if self.normalize_box.isChecked() is True:
-            ls_lda.append('normalize')
-        if self.standardize_box.isChecked() is True:
-            ls_lda.append('standardize')
 
         # update register field of lda settings
         self.ls_LDAset.setText(','.join(ls_lda))
@@ -818,8 +808,9 @@ class LDAPage(QWizardPage):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setTitle("LDA analysis")
-        self.setSubTitle("... to be written")
-        self.mean_corr = None
+        self.setSubTitle("Now we start with the analysis!  Click on RUN ANALYSIS,  to see the results of the "
+                         "classification.  If you want to see more results on the specific pigment pattern recorded "
+                         "with the ALPACA,  click CHECK HISTOGRAM.")
 
         # load layout
         self.initUI()
@@ -829,21 +820,24 @@ class LDAPage(QWizardPage):
         self.plot2D_box1.stateChanged.connect(self.mpl_decision)
         self.histo_button.clicked.connect(self.plot_histo)
         self.run_button.clicked.connect(self.run_LDA)
+        self.save_button.clicked.connect(self.save_report)
+        self.saveAll_button.clicked.connect(self.save_all)
 
     def initUI(self):
         # buttons to control the analysis
         self.histo_button = QPushButton('Check histogram', self)
         self.histo_button.setMaximumWidth(150)
-        self.histo_button.setFont(QFont('Helvetica Neue', fs_font))
+        self.histo_button.setEnabled(False)
+        self.histo_button.setFont(QFont(font_button, fs_font))
         self.run_button = QPushButton('Run analysis', self)
         self.run_button.setMaximumWidth(150)
-        self.run_button.setFont(QFont('Helvetica Neue', fs_font))
+        self.run_button.setFont(QFont(font_button, fs_font))
         self.saveAll_button = QPushButton('Save all', self)
         self.saveAll_button.setMaximumWidth(150)
-        self.saveAll_button.setFont(QFont('Helvetica Neue', fs_font))
+        self.saveAll_button.setFont(QFont(font_button, fs_font))
         self.save_button = QPushButton('Save report', self)
         self.save_button.setMaximumWidth(150)
-        self.save_button.setFont(QFont('Helvetica Neue', fs_font))
+        self.save_button.setFont(QFont(font_button, fs_font))
 
         # again as already in the settings; but for ease of use
         self.plot3D_box1 = QCheckBox('3D score plot', self)
@@ -867,14 +861,14 @@ class LDAPage(QWizardPage):
 
         # report table
         self.report = QTableWidget(self)
-        self.report.setColumnCount(3), self.report.setRowCount(10)
+        self.report.setColumnCount(3), self.report.setRowCount(1)
         self.report.setHorizontalHeaderLabels([' ', 'identified class', 'probability [%]'])
-        self.report.resizeColumnsToContents()
-        self.report.resizeRowsToContents()
+        self.report.resizeColumnsToContents(), self.report.resizeRowsToContents()
+        self.report.adjustSize()
 
         # create GroupBox to structure the layout
         class_grp = QGroupBox("Classification results")
-        class_grp.setFixedSize(300, 450)
+        class_grp.setFixedSize(350, 450)
         grid_class = QGridLayout()
 
         # add GroupBox to layout and load buttons in GroupBox
@@ -896,9 +890,9 @@ class LDAPage(QWizardPage):
         self.figScore = plt.figure(figsize=(7, 4))
         self.canvasScore = FigureCanvasQTAgg(self.figScore)
         if self.plot3D_box1.isChecked():
-            plot_3DScore_empty(fig=self.figScore)
+            self.figScore, self.axScore = plot_3DScore_empty(fig=self.figScore)
         else:
-            plot_2DScore_empty(fig=self.figScore)
+            self.figScore, self.axScore = plot_2DScore_empty(fig=self.figScore)
         self.figScore.canvas.draw()
 
         # create GroupBox to structure the layout
@@ -935,7 +929,7 @@ class LDAPage(QWizardPage):
         control_grp = QGroupBox("Navigation panel")
         grid_crtl = QGridLayout()
         control_grp.setMinimumWidth(800)
-        control_grp.setFont(QFont('Helvetica Neue', fs_font))
+        control_grp.setFont(QFont(font_button, fs_grp))
         vbox_bottom.addWidget(control_grp)
         control_grp.setLayout(grid_crtl)
 
@@ -955,14 +949,14 @@ class LDAPage(QWizardPage):
                 # making other check box to uncheck
                 self.plot2D_box1.setChecked(False)
                 self.figScore.clear()
-                self.figScore = plot_3DScore_empty(fig=self.figScore)
+                self.figScore, self.axScore = plot_3DScore_empty(fig=self.figScore)
 
             # if 2D check box is selected
             elif self.sender() == self.plot2D_box1:
                 # making other check box to uncheck
                 self.plot3D_box1.setChecked(False)
                 self.figScore.clear()
-                self.figScore = plot_2DScore_empty(fig=self.figScore)
+                self.figScore, self.axScore = plot_2DScore_empty(fig=self.figScore)
             sns.despine()
             self.figScore.canvas.draw()
 
@@ -975,6 +969,19 @@ class LDAPage(QWizardPage):
             wHisto.show()
 
     def run_LDA(self):
+        # load relevant data and prepare, e.g. correct them
+        self.get_data()
+        self.prep_data()
+
+        # preparing classification and output-file
+        [self.alg_group, self.alg_phylum, self.phyl_group, _, self.d,
+         self.prob] = algae.prep_lda_classify(lda=self.lda, classes_dict=self.classes_dict, df_score=self.df_score,
+                                              training_score=self.training_score)
+        # determine the probability of belonging for each phytoplankton group, plot scores, and fill results table
+        self.process_results()
+        self.fillTable()
+
+    def get_data(self):
         led_str = self.field('LED selected')
         ls_led = [int(i) for i in led_str.split(',')]
 
@@ -983,134 +990,380 @@ class LDAPage(QWizardPage):
          self.training_red] = algae.training_database(trainings_path=self.field("Database"), led_used=ls_led)
 
         # information for training data. Which separation level is chosen?
-        [classes_dict, color_dict, colorclass_dict,
-         genus_names] = algae.separation_level(separation=self.field('separation'))
+        [self.classes_dict, _, self.colorclass_dict, _] = algae.separation_level(separation=self.field('separation'))
 
-        # data correction
-        peak = True if 'peak detection' in self.field('LDA settings') else False
-        xcoords = [float(i) for i in self.field('xcoords')[1:-1].split(',')]
-        [c, peak, self.mean_corr,
-         LoD] = algae.correction_sample(l=results['l'], peak_detection=peak, led_total=led_selected, xcoords=xcoords,
-                                        device=results['device'], date=results['date'], blank_std=results['blank_std'],
-                                        header=results['header'], current=results['current'], volume=results['volume'],
-                                        full_calibration=results['full_calibration'], unit_blank=results['unit_blank'],
-                                        blank_mean=results['blank_mean'], blank_corr=results['blank_corr'],
-                                        kappa_spec=results['kappa_spec'], correction=results['correction'])
+    def prep_data(self):
+        # data correction        
+        global loaded_data, xcoords, ls_LDAset
+        peak_dt = True if 'peak detection' in ls_LDAset else False
+        
+        [c, _, self.mean_corr,
+         LoD] = algae.correction_sample(l=loaded_data['l'], header=loaded_data['header'], date=loaded_data['date'],
+                                        current=loaded_data['current'], volume=loaded_data['volume'],
+                                        device=loaded_data['device'], unit_blank=loaded_data['unit_blank'],
+                                        led_total=loaded_data['l'].columns, kappa_spec=loaded_data['kappa_spec'],
+                                        correction=loaded_data['correction'], blank_corr=loaded_data['blank_corr'],
+                                        xcoords=xcoords, full_calibration=loaded_data['full_calibration'],
+                                        peak_detection=peak_dt, blank_std=loaded_data['blank_std'],
+                                        blank_mean=loaded_data['blank_mean'])
 
         # calculate average fluorescence intensity at different excitation wavelengths of sample.
         # standardize and normalize the values if it is done with the training-data
-        norm = True if 'normalize' in self.field('LDA settings') else False
-        stand = True if 'standardize' in self.field('LDA settings') else False
         [mean_fluoro, training_corr,
-         pigment_pattern] = algae.average_fluorescence(mean_corr=self.mean_corr.T, normalize=norm, standardize=stand,
-                                                       training_corr_sort=self.training_corr_red_sort)
+         _] = algae.average_fluorescence(mean_corr=self.mean_corr, normalize=True, standardize=True,
+                                         training_corr_sort=self.training_corr_red_sort)
 
         # evaluation of mean values or individual spike evaluation
-        self.score_type = 3 if self.plot3D_box1.isChecked() else 2
-        dino = True if 'dinophyta' in self.field('LDA settings') else False
+        priority = True if 'dinophyta' in ls_LDAset else False
+        self.score_type = 3 if self.plot3D_box1.isChecked() is True else 2
         if ['--'] in c.unique():
-            [self.lda, training_score, df_score,
-             number_components] = algae.lda_process_mean(mean_fluoro=mean_fluoro, training_corr=training_corr,
-                                                         unit=results['unit'], classes_dict=classes_dict,
-                                                         colorclass_dict=colorclass_dict, type_=self.score_type,
-                                                         separation=self.field('separation'), priority=dino)
+            [self.lda, self.training_score,
+             self.df_score] = algae.lda_process_mean(mean_fluoro=mean_fluoro, training_corr=training_corr,
+                                                     unit=loaded_data['unit'], classes_dict=self.classes_dict,
+                                                     priority=priority, colorclass_dict=self.colorclass_dict,
+                                                     separation=loaded_data['sep'], type_=self.score_type)
         else:
-            [self.lda, df_score, training_score,
-             number_components] = algae.lda_process_individual(l=results['l_corr'], training_corr=training_corr,
-                                                               classes_dict=classes_dict, volume=None, priority=dino,
-                                                               colorclass_dict=colorclass_dict, type_=self.score_type,
-                                                               pumprate=results['pumprate'], normalize=norm, LoD=LoD,
-                                                               separation=self.field('separation'))
+            [self.lda, self.training_score,
+             self.df_score] = algae.lda_process_individual(l=loaded_data['l_corr'], training_corr=training_corr,
+                                                           priority=priority, classes_dict=self.classes_dict, LoD=LoD,
+                                                           normalize=True, separation=loaded_data['sep'], volume=None,
+                                                           pumprate=loaded_data['pumprate'], type_=self.score_type,
+                                                           colorclass_dict=self.colorclass_dict)
 
-        if number_components <= 2:
-            type_ = 2
-            self.plot3D_box1.setChecked(False), self.plot2D_box1.setChecked(True)
-        else:
-            type_ = self.score_type
+    def fillTable(self):
+        #!!!TODO: allow tabs to show classification on different levels
+        global loaded_data
+        [self.res, self.prob_phylum] = algae.output(self.sample, self.summary, self.summary_, date=loaded_data['date'],
+                                                    prob=self.prob, separation=loaded_data['sep'], save=False,
+                                                    path=loaded_data['path'])
 
-        # decision function calculating the distance between sample and centroid of each class. prob_
-        # calculates the 3D gaussian probability that a sample belongs to a certain algal class
-        limit = 1E-6
+        # get number of rows in table
+        new_row = self.report.rowCount()
+        x0 = new_row - 1
+        # check whether this (last) row is empty
+        item = self.report.item(x0, 0)
+        x = x0 if not item or not item.text() else x0 + 1
 
-        d = algae.reference_scores(self.lda, training_score, classes_dict)
-        d_, prob = [], []
-        d_.append(algae.sample_distance(d, df_score))
-        [prob.append(algae.prob_(d_[el])) for el in range(len(df_score))]
+        # add the number of rows according to index in self.res
+        self.report.setRowCount(len(self.res.index))
 
-        # preparing the output-file
-        summary, summary_, sample, sample_plot = [], [], [], []
-        # load overview file for algal groups and group colors
-        df_phylum = 'supplementary/phytoplankton/170427_algae.txt'
-        phylum = 'supplementary/phytoplankton/170427_algalphylum.txt'
-        alg_group = pd.read_csv(df_phylum, sep='\t', encoding="latin-1")
-        alg_phylum = pd.read_csv(phylum, sep='\t', header=None, encoding="latin-1", usecols=[1, 2],
-                                 index_col=0).drop_duplicates()
-        phyl_group = pd.DataFrame(np.zeros(shape=(0, 2)), columns=['phylum_label', 'color'])
+        # fill in the results into the table
+        for k in range(len(self.res.index)):
+            itemGrp = QTableWidgetItem(str(k))
+            itemGrp.setTextAlignment(Qt.AlignRight)
 
-        for el in range(len(prob)):
-            for k in range(len(prob[0])):
-                if prob[el].values[k][0] > limit:
-                    sample.append(el)
-                    summary.append(prob[el].index[k])
-                    summary_.append(float(prob[el].values[k]))
+            item = QTableWidgetItem(str(self.res.loc[self.res.index[k]][0].split(' ')[-1]))
+            item.setTextAlignment(Qt.AlignRight)
+            item1 = QTableWidgetItem(str(self.res.loc[self.res.index[k]][1]))
+            item1.setTextAlignment(Qt.AlignRight)
+            item2 = QTableWidgetItem(str(self.res.loc[self.res.index[k]][2]))
+            item2.setTextAlignment(Qt.AlignRight)
 
-                    if el not in sample_plot:
-                        sample_plot.append(el)
-                        color = d['LDA1'].copy()
+            # item structure: row, table, content
+            self.report.setItem(x, 0, item)
+            self.report.setItem(x, 1, item1)
+            self.report.setItem(x, 2, item2)
 
-                        for coords in d.index:
-                            color[coords] = colorclass_dict[coords]
+            # go to the next row
+            x += 1
 
-                        if type_ == 2:
-                            # 2D Plot activated
-                            self.figScore.clear()
-                            self.axScore = self.figScore.add_subplot(111)
-                            self.axScore.set_xlabel('LDA 1', fontsize=fs, labelpad=10)
-                            self.axScore.set_ylabel('LDA 2', fontsize=fs, labelpad=10)
-                            self.figScore.subplots_adjust(left=0.12, right=0.9, bottom=0.18, top=0.85)
-                            self.figScore.canvas.draw()
-                            plot_distribution_2d(df_score=df_score.loc[df_score.index[el], :], alg_group=alg_group,
-                                                 color=color, alg_phylum=alg_phylum, phyl_group=phyl_group, d=d,
-                                                 f=self.figScore, ax=self.axScore, separation=self.field('separation'))
-                        elif type_ == 3:
-                            self.figScore.clear()
-                            self.axScore = self.figScore.gca(projection='3d')
-                            self.figScore.canvas.draw()
-                            plot_distribution_3d(df_score=df_score.loc[df_score.index[el], :], alg_group=alg_group,
-                                                 color=color, alg_phylum=alg_phylum, phyl_group=phyl_group, d=d,
-                                                 f=self.figScore, ax=self.axScore, separation=self.field('separation'))
+        # adjust table header to its content
+        header = self.report.horizontalHeader()
+        header.setSectionResizeMode(QtWidgets.QHeaderView.Stretch)
+        header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeToContents)
+        # size policy
+        self.report.setSizeAdjustPolicy(QtWidgets.QAbstractScrollArea.AdjustToContents)
+        self.report.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)  # +++
+
+        # adjust table to its content
+        self.report.resizeRowsToContents(), self.report.adjustSize()
+
+    def process_results(self):
+        global results
+        limit, self.summary, self.summary_, self.sample, self.sample_plot = 1E-6, [], [], [], []
+        for el in range(len(self.prob)):
+            for k in range(len(self.prob[0])):
+                if self.prob[el].values[k][0] > limit:
+                    self.sample.append(el)
+                    self.summary.append(self.prob[el].index[k])
+                    self.summary_.append(float(self.prob[el].values[k]))
+
+                    if el not in self.sample_plot:
+                        self.sample_plot.append(el)
+                        self.color = self.d['LDA1'].copy()
+                        for coords in self.d.index:
+                            self.color[coords] = self.colorclass_dict[coords]
+
+                        if self.score_type == 2:
+                            self.plot_distribution_2d(f=self.figScore, ax=self.axScore, alg_group=self.alg_group,
+                                                      df_score=self.df_score.loc[self.df_score.index[el], :], d=self.d,
+                                                      alg_phylum=self.alg_phylum, phyl_group=self.phyl_group,
+                                                      separation=loaded_data['sep'])
+                        else:
+                            self.plot_distribution_3d(f=self.figScore, ax=self.axScore, separation=loaded_data['sep'],
+                                                      df_score=self.df_score.loc[self.df_score.index[el], :], d=self.d,
+                                                      alg_group=self.alg_group, alg_phylum=self.alg_phylum,
+                                                      phyl_group=self.phyl_group)
+                        self.figScore.canvas.draw()
 
                     else:
-                        color = d['LDA1'].copy()
-                        for coords in d.index:
-                            color[coords] = colorclass_dict[coords]
+                        self.color = self.d['LDA1'].copy()
+                        for coords in self.d.index:
+                            self.color[coords] = self.colorclass_dict[coords]
 
-        [self.res, self.prob_phylum] = algae.output(sample, sample_plot, summary, summary_, date=results['date'],
-                                                    name=results['name'], prob=prob, separation=self.field('separation'),
-                                                    path=None, save=False)
-        # add score results
-        for i in range(len(self.res.index)):
-            it1 = QTableWidgetItem(str(self.res.loc[self.res.index[i], self.res.columns[0]]))
-            self.report.setItem(i, 0, it1)
-            it1.setTextAlignment(0 | 2), it1.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
-            it2 = QTableWidgetItem(str(self.res.loc[self.res.index[i], self.res.columns[1]]))
-            self.report.setItem(i, 1, it2)
-            it2.setTextAlignment(0 | 2), it2.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
-            it3 = QTableWidgetItem(str(self.res.loc[self.res.index[i], self.res.columns[2]]))
-            self.report.setItem(i, 2, it3)
-            it3.setTextAlignment(0 | 2), it3.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
+        # allow histogram button now as we have the pigment pattern
+        self.histo_button.setEnabled(True)
+        results['score plot'] = self.figScore
 
-        self.report.resizeColumnsToContents()
-        self.report.resizeRowsToContents()
+    def plot_distribution_2d(self, f, ax, d, df_score, alg_group, alg_phylum, phyl_group, separation):
+        ax.cla()
+        # preparation of figure plot
+        if ax is None:
+            f, ax = plt.subplots()
+
+        # plotting the centers of each algal class
+        for el in d.index:
+            ax.scatter(d.loc[el, d.columns[0]], d.loc[el, d.columns[1]], facecolor=self.color[el], edgecolor='k', s=6,
+                       lw=0.25)
+
+        # calculate the standard deviation within one class to built up a solid (sphere with 3 different radii)
+        # around the centroid using spherical coordinates
+        ls_xrange, ls_yrange = list(), list()
+        for i in d.index:
+            # replace sample name (phyl_group.index) with phylum name (in phyl_group['phylum_label'])
+            phyl = alg_group[alg_group[separation] == i]['phylum'].values[0]
+            if phyl in phyl_group['phylum_label'].values:
+                pass
+            else:
+                phyl_group.loc[i, 'phylum_label'] = phyl
+                if isinstance(alg_phylum.loc[phyl, :].values, np.ndarray):
+                    phyl_group.loc[i, 'color'] = alg_phylum.loc[phyl, :].values[0]
+                else:
+                    phyl_group.loc[i, 'color'] = alg_phylum.loc[phyl, :].values
+
+            rx = np.sqrt(d['LDA1var'].loc[i])
+            ry = np.sqrt(d['LDA2var'].loc[i])
+            c_x = d.loc[i]['LDA1']
+            c_y = d.loc[i]['LDA2']
+            ells = Ellipse(xy=[c_x, c_y], width=rx, height=ry, angle=0, edgecolor=self.color[i], lw=1,
+                           facecolor=self.color[i], alpha=0.6, label=i)
+            ax.add_artist(ells)
+            ells2 = Ellipse(xy=[c_x, c_y], width=2 * rx, height=2 * ry, angle=0, edgecolor=self.color[i], lw=0.25,
+                            facecolor=self.color[i], alpha=0.4)
+            ax.add_artist(ells2)
+
+            ells3 = Ellipse(xy=[c_x, c_y], width=3 * rx, height=3 * ry, angle=0, edgecolor=self.color[i], lw=0.15,
+                            facecolor=self.color[i], alpha=0.1)
+            ax.add_artist(ells3)
+            # store for x/y scale adjustment
+            ls_xrange.append([c_x - rx, c_x + rx]), ls_yrange.append([c_y - ry, c_y + ry])
+
+        # patch = pd.DataFrame(np.zeros(shape=(len(phyl_group), 2)), index=phyl_group.index)
+        patch = []
+        for i in phyl_group.index:
+            patch.append(mpatches.Patch(color=phyl_group.loc[i, 'color'], label=phyl_group.loc[i, 'phylum_label']))
+            leg = ax.legend(handles=patch, loc="upper center", bbox_to_anchor=(1.2,.75), frameon=True, fontsize=fs*.75)
+        frame = leg.get_frame()
+        frame.set_linewidth(0.25)
+        ax.set_xlabel('LDA1', fontsize=fs, labelpad=5)
+        ax.set_ylabel('LDA2', fontsize=fs, labelpad=5)
+
+        # plotting the sample scores
+        df_score = pd.DataFrame(df_score)
+        for i in range(len(df_score.columns)):
+            ax.plot(df_score.loc['LDA1', df_score.columns[i]], df_score.loc['LDA2', df_score.columns[i]], marker='^',
+                    markersize=2, color='orangered', label='')
+            # store for x/y scale adjustment
+            ls_xrange.append([df_score.loc['LDA1', df_score.columns[i]], df_score.loc['LDA1', df_score.columns[i]]])
+            ls_yrange.append([df_score.loc['LDA2', df_score.columns[i]], df_score.loc['LDA2', df_score.columns[i]]])
+
+        # adjust x/y scale
+        if np.nanmin(pd.DataFrame(ls_xrange)) < 0:
+            min_ = -1*np.abs(np.nanmin(pd.DataFrame(ls_xrange))) * 1.25
+        else:
+            min_ = np.abs(np.nanmin(pd.DataFrame(ls_xrange))) * 0.85
+        ax.set_xlim(min_, np.nanmax(pd.DataFrame(ls_xrange)) * 1.25)
+
+        if np.nanmin(pd.DataFrame(ls_yrange)) < 0:
+            min_ = -1*np.abs(np.nanmin(pd.DataFrame(ls_yrange))) * 1.25
+        else:
+            min_ = np.abs(np.nanmin(pd.DataFrame(ls_yrange))) * 0.85
+        ax.set_ylim(min_, np.nanmax(pd.DataFrame(ls_yrange)) * 1.25)
+        sns.despine()
+        f.subplots_adjust(left=0.15, right=0.75, bottom=0.2, top=0.9)
+    
+    def plot_distribution_3d(self, f, ax, d, df_score, alg_group, alg_phylum, phyl_group, separation):
+        ax.cla()
+        # preparation of figure plot
+        if ax is None:
+            f = plt.figure()
+            ax = f.gca(projection='3d')
+            ax.set_aspect('auto')
+        # initial view of score plot to enhance the separation of algae and cyanos
+        ax.view_init(elev=19., azim=-60) # elev=19., azim=-67
+
+        # plotting the centers of each algal class
+        for el in d.index:
+            ax.scatter(d.loc[el, d.columns[0]], d.loc[el, d.columns[1]], d.loc[el, d.columns[2]], marker='.', color='k',
+                       s=6)
+
+        # calculate the standard deviation within one class to built up a solid (sphere with 3 different radii)
+        # around the centroid using spherical coordinates
+        for i in d.index:
+            # replace sample name (phyl_group.index) with phylum name (in phyl_group['phylum_label'])
+            phyl = alg_group[alg_group[separation] == i]['phylum'].values[0]
+            if phyl in phyl_group['phylum_label'].values:
+                pass
+            else:
+                phyl_group.loc[i, 'phylum_label'] = phyl
+                if isinstance(alg_phylum.loc[phyl, :].values, np.ndarray):
+                    phyl_group.loc[i, 'color'] = alg_phylum.loc[phyl, :].values[0]
+                else:
+                    phyl_group.loc[i, 'color'] = alg_phylum.loc[phyl, :].values
+
+            rx = np.sqrt(d['LDA1var'].loc[i])
+            ry = np.sqrt(d['LDA2var'].loc[i])
+            rz = np.sqrt(d['LDA3var'].loc[i])
+            c_x = d.loc[i]['LDA1']
+            c_y = d.loc[i]['LDA2']
+            c_z = d.loc[i]['LDA3']
+
+            u, v = np.mgrid[0:2 * np.pi:10j, 0:np.pi:20j]
+            x = rx * np.cos(u) * np.sin(v) + c_x
+            y = ry * np.sin(u) * np.sin(v) + c_y
+            z = rz * np.cos(v) + c_z
+            ax.plot_wireframe(x, y, z, color=self.color[i], alpha=0.5, linewidth=1, label=phyl)
+
+            x1 = 2 * rx * np.cos(u) * np.sin(v) + c_x
+            y1 = 2 * ry * np.sin(u) * np.sin(v) + c_y
+            z1 = 2 * rz * np.cos(v) + c_z
+            ax.plot_wireframe(x1, y1, z1, color=self.color[i], alpha=0.2, linewidth=1)
+
+            x2 = 3 * rx * np.cos(u) * np.sin(v) + c_x
+            y2 = 3 * ry * np.sin(u) * np.sin(v) + c_y
+            z2 = 3 * rz * np.cos(v) + c_z
+            ax.plot_wireframe(x2, y2, z2, color=self.color[i], alpha=0.15, linewidth=0.5)
+
+        patch = []
+        for i in phyl_group.index:
+            patch.append(mpatches.Patch(color=phyl_group.loc[i, 'color'], label=phyl_group.loc[i, 'phylum_label']))
+            leg = ax.legend(handles=patch, loc="upper center", bbox_to_anchor=(-0.2, 0.9), frameon=True, fancybox=True,
+                            fontsize=fs*0.75)
+        frame = leg.get_frame()
+        frame.set_linewidth(0.25)
+        plt.setp(ax.get_xticklabels(), va='center', ha='center', fontsize=fs*0.9)
+        plt.setp(ax.get_yticklabels(), va='center', ha='center', fontsize=fs*0.8)
+        plt.setp(ax.get_zticklabels(), va='center', ha='center', fontsize=fs*0.8)
+        ax.tick_params(axis='z', which='major', pad=-2.5)
+        ax.set_xlabel('LDA1', fontsize=fs, labelpad=-10, rotation=-2)
+        ax.set_ylabel('LDA2', fontsize=fs, labelpad=-10, rotation=33)
+        ax.set_zlabel('LDA3', fontsize=fs, labelpad=-10, rotation=90)
+
+        # plotting the sample scores
+        df_score = pd.DataFrame(df_score)
+        for i in range(len(df_score.columns)):
+            ax.scatter(df_score.loc['LDA1', df_score.columns[i]], df_score.loc['LDA2', df_score.columns[i]],
+                       df_score.loc['LDA3', df_score.columns[i]], marker='^', s=2, color='orangered', label='')
+
+        # adjust layout
+        f.tight_layout()
+
+    def gather_saving_info(self, path_folder):
+        global results, xcoords
+
+        # collect individual information about analysis and sample to be part of the save_name and save in dictionary
+        # date / time
+        if 'time' not in results.keys():
+            results['time'] = datetime.now().strftime("%Y%m%d-%H%M%S")
+        # time frame selected
+        results['info'] = str(round(xcoords[0], 2)) + '-' + str(round(xcoords[1], 2)) + 'sec'
+        # LDA with dinoflagellata prioritized
+        results['priority'] = 'Dino-priority' if 'dinophyta' in ls_LDAset else ''
+        # peak detection selected
+        results['peak'] = True if 'peak detection' in ls_LDAset else False
+        # sample name
+        results['name'] = loaded_data['name']
+
+        # combine information for save_name
+        save_start = path_folder + results['time']
+        save_end = results['priority'] + '_split-' + results['info'] + '.txt'
+        save_name_sample = save_start + '_scores-' + results['name'] + '_' + save_end
+        save_name_training = save_start + '_training-scores_' + save_end
+        return save_name_training, save_name_sample
+
+    def save_report(self, feedback=True):
+        global loaded_data, xcoords, ls_LDAset, results
+
+        if 'fsave' not in results.keys():
+            # open directory to save the image
+            results['fsave'] = str(QtWidgets.QFileDialog.getExistingDirectory(parent=self, directory=os.getcwd(),
+                                                                              caption='Select Folder for saving'))
+
+        # create report folder in selected directory
+        path_folder = results['fsave'] + '/results_scores/'
+        if not os.path.exists(path_folder):
+            os.makedirs(path_folder)
+        save_name_training, save_name_sample = self.gather_saving_info(path_folder)
+
+        # save scores and LDA information
+        self.d.to_csv(save_name_training, sep='\t', decimal='.')
+        self.df_score.to_csv(save_name_sample, sep='\t', decimal='.')
+        _ = algae.linear_discriminant_save(res=self.res, prob_phylum=self.prob_phylum, date=loaded_data['date'],
+                                           info=results['info'], name=results['name'], path=results['fsave'],
+                                           blank_corr=loaded_data['blank_corr'], peak_detection=results['peak'],
+                                           correction=loaded_data['correction'])
+
+        # feedback to user - saving is done
+        if feedback is True:
+            feedback_user(text="Report successfully saved to folder.", icon=QMessageBox.Information,
+                          title='Good Job')
+        return
+
+    def save_all(self):
+        global loaded_data, xcoords, ls_LDAset, save_type, results
+
+        # saving the report
+        self.save_report(feedback=False)
+
+        # prep folder for score plot
+        path_folder = results['fsave'] + '/plots/'
+        if not os.path.exists(path_folder):
+            os.makedirs(path_folder)
+        # save score plot
+        for t in save_type:
+            save_name = path_folder + results['time'] + '_Sample-scores_{}.'.format(loaded_data['name'])
+            results['score plot'].savefig(save_name + t, dpi=300, transparent=False)
+
+        # prep folder for pigment pattern
+        path_folder2 = results['fsave'] + '/plots/pigmentPattern/'
+        if not os.path.exists(path_folder2):
+            os.makedirs(path_folder2)
+
+        # generate pigment pattern in case it does not exist yet
+        generate_pigment_pattern(mean_pattern=self.mean_corr, ax=None, fig=None)
+        # save pigment pattern
+        for t in save_type:
+            save_name2 = path_folder2 + results['time'] + '_pigmentPattern_{}.'.format(loaded_data['name'])
+            results['pigment pattern'].savefig(save_name2 + t, dpi=300, transparent=False)
+
+        # feedback to user - saving is done
+        feedback_user(text="Everything successfully saved to the folders.", icon=QMessageBox.Information,
+                      title='Successful')
+
 
 class HistoWindow(QDialog):
-    def __init__(self, mean):
+    def __init__(self, mean_pattern):
         super().__init__()
-        self.mean = mean
         self.initUI()
 
-        if self.mean is not None:
-            self.plot_histogram(self.mean.T, self.ax_histo, self.fig_histo)
+        # get the transmitted data
+        global loaded_data
+        self.mean_pattern, led_total = mean_pattern, list(loaded_data['l'].columns)
+
+        # generate pigment pattern plot
+        generate_pigment_pattern(mean_pattern=self.mean_pattern, ax=self.ax_histo, fig=self.fig_histo)
 
         # when checkbox selected, save information in registered field
         self.close_button.clicked.connect(self.close_window)
@@ -1122,9 +1375,9 @@ class HistoWindow(QDialog):
 
         # close window button
         self.close_button = QPushButton('OK', self)
-        self.close_button.setFixedWidth(100), self.close_button.setFont(QFont('Helvetica Neue', fs_font))
+        self.close_button.setFixedWidth(100), self.close_button.setFont(QFont(font_button, fs_font))
         self.saveH_button = QPushButton('Save', self)
-        self.saveH_button.setFixedWidth(100), self.saveH_button.setFont(QFont('Helvetica Neue', fs_font))
+        self.saveH_button.setFixedWidth(100), self.saveH_button.setFont(QFont(font_button, fs_font))
 
         # histogram figure plot
         self.fig_histo, self.ax_histo = plt.subplots()
@@ -1138,8 +1391,8 @@ class HistoWindow(QDialog):
         self.ax_histo.set_xlabel('Wavelength / nm', fontsize=fs)
         self.ax_histo.set_ylabel('Relative signal intensity / rfu', fontsize=fs)
         self.fig_histo.subplots_adjust(left=0.15, right=0.95, bottom=0.2, top=0.9)
-        self.fig_histo.canvas.draw()
         sns.despine()
+        self.fig_histo.canvas.draw()
 
         # creating window layout
         mlayout2 = QVBoxLayout()
@@ -1148,7 +1401,7 @@ class HistoWindow(QDialog):
 
         histo_grp = QGroupBox("Pigment pattern")
         grid_plot = QGridLayout()
-        histo_grp.setFont(QFont('Helvetica Neue', 12))
+        histo_grp.setFont(QFont(font_button, fs_grp))
         vbox2_top.addWidget(histo_grp)
         histo_grp.setLayout(grid_plot)
 
@@ -1166,7 +1419,7 @@ class HistoWindow(QDialog):
         # create GroupBox to structure the layout
         button_grp = QGroupBox("")
         grid_button = QGridLayout()
-        button_grp.setFont(QFont('Helvetica Neue', 12))
+        button_grp.setFont(QFont(font_button, fs_grp))
         vbox2_bottom.addWidget(button_grp)
         button_grp.setLayout(grid_button)
 
@@ -1177,49 +1430,73 @@ class HistoWindow(QDialog):
         # add everything to the window layout
         self.setLayout(mlayout2)
 
-    def plot_histogram(self, mean, ax, f):
-        # plot histogram: Relative intensity @ different excitation LEDs.
-        mean = mean.sort_index()
-
-       # prepare general information about the sample and the setup
-        LED_color, LED_wl = [], []
-        for i in mean.index:
-            if type(i) == str:
-                j = i + ' nm' if len(i.split(' ')) == 1 else i
-            else:
-                j = str(i) + ' nm'
-            LED_wl.append(j)
-            LED_color.append(led_color_dict[j])
-
-        mean.index = LED_wl
-
-        # normalize mean
-        means = mean / mean.max()
-        for i in means.index:
-            if (means.loc[i, :].values[0]) < 0:
-                means.loc[i, :].values[0] = 0
-
-        self.led_total = pd.DataFrame(self.led_selection)
-        x = []
-        for i in mean.index:
-            x.append(self.led_total[self.led_total[0] == i].index[0])
-
-        for k, l in enumerate(mean.index):
-            ax.bar(x[k]+0.5, means.loc[l, :], width=0.9, color=LED_color[k])
-        ax.set_xticks([0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5])
-        ax.set_xticklabels(mean.index)
-        ax.xaxis.grid(False)
-        plt.setp(ax.get_xticklabels(), rotation=45, ha='center')
-
-        ax.set_xlabel('Wavelength / nm'), ax.set_ylabel('Relative signal intensity / rfu')
-        f.subplots_adjust(bottom=0.28, left=0.15), sns.despine()
-        f.canvas.draw()
-
     def save_histogram(self):
-        print('enable saving')
+        global loaded_data, results
+        # actual time to avoid overwriting
+        if 'time' not in results.keys():
+            results['time'] = datetime.now().strftime("%Y%m%d-%H%M%S")
+
+        # open directory to save the image
+        if 'fsave' not in results.keys():
+            results['fsave'] = str(QtWidgets.QFileDialog.getExistingDirectory(parent=self, directory=os.getcwd(),
+                                                                              caption='Select Folder for saving'))
+
+        if results['fsave']:
+            # create report folder in selected directory
+            path_save = results['fsave'] + '/plots/pigmentPattern/'
+            if not os.path.exists(path_save):
+                os.makedirs(path_save)
+
+            for t in save_type:
+                save_name = path_save + results['time'] + '_pigmentPattern_{}.'.format(loaded_data['name'])
+                results['pigment pattern'].savefig(save_name + t, dpi=300, transparent=False)
+
+            # feedback to user - saving is done
+            feedback_user(text="Pigment pattern successfully saved to folder.", icon=QMessageBox.Information,
+                          title='Successful')
 
     def close_window(self):
         self.hide()
+
+
+class FinalPage(QWizardPage):
+    def __init__(self, parent=None):
+        super(FinalPage, self).__init__(parent)
+        self.setTitle("Final page")
+        self.setSubTitle("Thanks for visiting  ·  Tak for besøget\n\nIf you have any questions regarding the "
+                         "software or have encountered a bug,  please do not hesitate to contact me at "
+                         "info@envipatable.com.\n\n")
+
+
+def generate_pigment_pattern(mean_pattern, ax=None, fig=None):
+    global led_color_dict, results
+    if fig is None or ax is None:
+        fig, ax = plt.subplots()
+        ax.set_xlim(0, 8)
+        ax.set_xticks([0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5])
+        led_selection = ['380 nm', '403 nm', '438 nm', '453 nm', '472 nm', '526 nm', '593 nm', '640 nm']
+        ax.set_xticklabels(led_selection, rotation=15)
+        ax.tick_params(axis='x', which='both', labelsize=fs, width=.3, length=2.5)
+        ax.tick_params(axis='y', which='both', labelsize=fs, width=.3, length=2.5)
+        ax.set_xlabel('Wavelength / nm', fontsize=fs)
+        ax.set_ylabel('Relative signal intensity / rfu', fontsize=fs)
+
+    # normalize average LED intensities
+    mean_norm = mean_pattern / mean_pattern.max()
+    x = np.arange(len(mean_norm.index))
+
+    # plot pattern
+    for k, l in enumerate(mean_norm.index):
+        ax.bar(x[k]+0.5, mean_norm.loc[l, :], width=0.9, color=led_color_dict[l])
+
+    # adjust axes
+    ax.set_xticklabels(mean_norm.index, rotation=15)
+    fig.subplots_adjust(left=0.15, right=0.95, bottom=0.2, top=0.9)
+
+    # draw figure
+    sns.despine()
+    fig.canvas.draw()
+    results['pigment pattern'] = fig
 
 
 def plot_3DScore_empty(fig=None, ax=None):
@@ -1228,6 +1505,7 @@ def plot_3DScore_empty(fig=None, ax=None):
     if ax is None:
         ax = fig.add_subplot(111, projection='3d')
 
+    # ax = plt.gca()
     ax.set_xlabel('LDA 1', fontsize=fs, labelpad=-7.5)
     ax.set_ylabel('LDA 2', fontsize=fs, labelpad=-7.5)
     ax.set_zlabel('LDA 3', fontsize=fs, labelpad=-5)
@@ -1236,79 +1514,7 @@ def plot_3DScore_empty(fig=None, ax=None):
     ax.tick_params(axis='z', which='both', labelsize=fs, width=.3, length=2.5, pad=0)
     ax.view_init(elev=20., azim=-30)
     fig.tight_layout(pad=0.5), sns.despine()
-    return fig
-
-
-def plot_distribution_3d(f, ax, d, df_score, color, alg_group, alg_phylum, phyl_group, separation):
-    ax.cla()
-    # preparation of figure plot
-    if ax is None:
-        f = plt.figure()
-        ax = f.gca(projection='3d')
-        ax.set_aspect('auto')
-    # initial view of score plot to enhance the separation of algae and cyanos
-    ax.view_init(elev=20., azim=-30)
-    ax.set_xlabel('LDA 1', fontsize=fs, labelpad=-7.5)
-    ax.set_ylabel('LDA 2', fontsize=fs, labelpad=-7.5)
-    ax.set_zlabel('LDA 3', fontsize=fs, labelpad=-5)
-    ax.tick_params(axis='x', which='both', labelsize=fs, width=.3, length=2.5, pad=-3.)
-    ax.tick_params(axis='y', which='both', labelsize=fs, width=.3, length=2.5, pad=-2.5)
-    ax.tick_params(axis='z', which='both', labelsize=fs, width=.3, length=2.5, pad=0)
-
-    # plotting the centers of each algal class
-    c = d.columns
-    [ax.scatter(d.loc[el, c[0]], d.loc[el, c[1]], d.loc[el, c[2]], marker='.', fc=color[el], lw=0.5, ec='k', s=5) for el in d.index]
-
-    # calculate the standard deviation within one class to built up a solid (sphere with 3 different radii)
-    # around the centroid using spherical coordinates
-    for i in d.index:
-        # replace sample name (phyl_group.index) with phylum name (in phyl_group['phylum_label'])
-        phyl = alg_group[alg_group[separation] == i]['phylum'].values[0]
-        if phyl in phyl_group['phylum_label'].values:
-            pass
-        else:
-            phyl_group.loc[i, 'phylum_label'] = phyl
-            phyl_group.loc[i, 'color'] = alg_phylum.loc[phyl, :].values
-
-        rx = np.sqrt(d['LDA1var'].loc[i])
-        ry = np.sqrt(d['LDA2var'].loc[i])
-        rz = np.sqrt(d['LDA3var'].loc[i])
-        c_x = d.loc[i]['LDA1']
-        c_y = d.loc[i]['LDA2']
-        c_z = d.loc[i]['LDA3']
-
-        u, v = np.mgrid[0:2 * np.pi:10j, 0:np.pi:20j]
-        x = rx * np.cos(u) * np.sin(v) + c_x
-        y = ry * np.sin(u) * np.sin(v) + c_y
-        z = rz * np.cos(v) + c_z
-        ax.plot_wireframe(x, y, z, color=color[i], alpha=0.5, linewidth=0.75, label=phyl)
-
-        x1 = 2 * rx * np.cos(u) * np.sin(v) + c_x
-        y1 = 2 * ry * np.sin(u) * np.sin(v) + c_y
-        z1 = 2 * rz * np.cos(v) + c_z
-        ax.plot_wireframe(x1, y1, z1, color=color[i], alpha=0.2, linewidth=0.5)
-
-        x2 = 3 * rx * np.cos(u) * np.sin(v) + c_x
-        y2 = 3 * ry * np.sin(u) * np.sin(v) + c_y
-        z2 = 3 * rz * np.cos(v) + c_z
-        ax.plot_wireframe(x2, y2, z2, color=color[i], alpha=0.15, linewidth=0.15)
-
-    patch = []
-    for i in phyl_group.index:
-        col = phyl_group.loc[i, 'color'][0] if isinstance(phyl_group.loc[i, 'color'], np.ndarray) else\
-            phyl_group.loc[i, 'color']
-        patch.append(mpatches.Patch(color=col, linewidth=0.1, label=phyl_group.loc[i, 'phylum_label']))
-        leg = ax.legend(handles=patch, loc="upper center", bbox_to_anchor=(0., 0.9), frameon=True, fancybox=True,
-                        fontsize=fs * 0.6)
-        leg.get_frame().set_linewidth(0.1)
-
-    # plotting the sample scores
-    df_score = pd.DataFrame(df_score)
-    for i in df_score.columns:
-        ax.scatter(df_score.loc['LDA1', i], df_score.loc['LDA2', i], df_score.loc['LDA3', i], marker='^', s=10,
-                   color='gold', label='')
-    f.tight_layout(pad=0.5), sns.despine()
-    f.canvas.draw()
+    return fig, ax
 
 
 def plot_2DScore_empty(fig=None, ax=None):
@@ -1322,65 +1528,21 @@ def plot_2DScore_empty(fig=None, ax=None):
     ax.tick_params(axis='x', which='both', labelsize=fs, width=.3, length=2.5)
     ax.tick_params(axis='y', which='both', labelsize=fs, width=.3, length=2.5)
     fig.tight_layout(pad=2), sns.despine()
-    return fig
+    fig.canvas.draw()
+    return fig, ax
 
 
-def plot_distribution_2d(f, ax, d, df_score, color, alg_group, alg_phylum, phyl_group, separation):
-    ax.cla()
-    # preparation of figure plot
-    if ax is None:
-        f, ax = plt.subplots(figsize=(7, 4))
-    ax.set_xlabel('LDA 1', fontsize=fs)
-    ax.set_ylabel('LDA 2', fontsize=fs)
-    ax.tick_params(axis='x', which='both', labelsize=fs, width=.3, length=2.5)
-    ax.tick_params(axis='y', which='both', labelsize=fs, width=.3, length=2.5)
+def feedback_user(text, icon, title):
+    msgBox = QMessageBox()
+    msgBox.setIcon(icon)
+    msgBox.setText(text)
+    msgBox.setFont(QFont(font_button, fs_font))
+    msgBox.setWindowTitle(title)
+    msgBox.setStandardButtons(QMessageBox.Ok)
 
-    # plotting the centers of each algal class
-    [ax.scatter(d.loc[el, 'LDA1'], d.loc[el, 'LDA2'], facecolor=color[el], lw=0.15, ec='k', marker='.', s=5) for el in d.index]
-
-    # calculate the standard deviation within one class to built up a solid (sphere with 3 different radii)
-    # around the centroid using spherical coordinates
-    for i in d.index:
-        # replace sample name (phyl_group.index) with phylum name (in phyl_group['phylum_label'])
-        phyl = alg_group[alg_group[separation] == i]['phylum'].values[0]
-        if phyl in phyl_group['phylum_label'].values:
-            pass
-        else:
-            phyl_group.loc[i, 'phylum_label'] = phyl
-            phyl_group.loc[i, 'color'] = alg_phylum.loc[phyl, :].values
-
-        rx = np.sqrt(d['LDA1var'].loc[i])
-        ry = np.sqrt(d['LDA2var'].loc[i])
-        c_x = d.loc[i]['LDA1']
-        c_y = d.loc[i]['LDA2']
-        ells = Ellipse(xy=[c_x, c_y], width=rx, height=ry, angle=0, edgecolor=color[i], lw=0.75, facecolor=color[i],
-                       alpha=0.6, label=i)
-        ax.add_artist(ells)
-
-        ells2 = Ellipse(xy=[c_x, c_y], width=2 * rx, height=2 * ry, angle=0, edgecolor=color[i], lw=0.5, alpha=0.4,
-                        facecolor=color[i])
-        ax.add_artist(ells2)
-
-        ells3 = Ellipse(xy=[c_x, c_y], width=3 * rx, height=3 * ry, angle=0, edgecolor=color[i], lw=0.25, alpha=0.1,
-                        facecolor=color[i])
-        ax.add_artist(ells3)
-
-    # patch = pd.DataFrame(np.zeros(shape=(len(phyl_group), 2)), index=phyl_group.index)
-    patch = []
-    for i in phyl_group.index:
-        col = phyl_group.loc[i, 'color'][0] if isinstance(phyl_group.loc[i, 'color'], np.ndarray) else \
-            phyl_group.loc[i, 'color']
-        patch.append(mpatches.Patch(color=col, linewidth=0., label=phyl_group.loc[i, 'phylum_label']))
-        leg = ax.legend(handles=patch, loc="upper center", bbox_to_anchor=(1.2, 0.9), frameon=True, fancybox=True,
-                        fontsize=fs*0.6)
-        leg.get_frame().set_linewidth(0.1)
-
-    # plotting the sample scores
-    df_score = pd.DataFrame(df_score)
-    for i in df_score.columns:
-        ax.scatter(df_score.loc['LDA1', i], df_score.loc['LDA2', i], marker='^', s=10, color='gold', label='')
-    f.tight_layout(pad=0.5), sns.despine()
-    f.canvas.draw()
+    returnValue = msgBox.exec()
+    if returnValue == QMessageBox.Ok:
+        pass
 
 
 # -----------------------------------------------------------------------------------------------------------------
@@ -1388,7 +1550,8 @@ if __name__ == '__main__':
     import sys
 
     app = QApplication(sys.argv)
-    app.setStyle('Breeze')
+    # application style options: 'Breeze', 'Oxygen', 'QtCurve', 'Windows', 'Fusion'
+    app.setStyle('QtCurve')
     app.setWindowIcon(QIcon('ALPACA_icon.jpg'))
 
     alpaca = MagicWizard()
@@ -1396,7 +1559,6 @@ if __name__ == '__main__':
     screen = app.primaryScreen()
     rect = screen.availableGeometry()
     alpaca.setMaximumHeight(int(rect.height() * 0.9))
-    #alpaca.setFixedWidth(int(rect.width() * 0.95))
 
     # show wizard
     alpaca.show()
