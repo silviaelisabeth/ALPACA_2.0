@@ -1,34 +1,19 @@
 __author__ = 'szieger'
 __project__ = 'SCHeMA_algorithm_LDA'
 
-
 import matplotlib.pyplot as plt
+import seaborn as sns
 import numpy as np
 import pandas as pd
-from numpy import *
-from glob import glob
-import os
 import os.path
 from pylab import *
 from scipy.stats import *
-import math
-import matplotlib.colors as colors
-from mpl_toolkits.mplot3d import Axes3D
-import matplotlib.mlab as mlab
-from time import time
-from matplotlib.patches import Ellipse
-from termcolor import colored, cprint
-import matplotlib.patches as mpatches
-import seaborn as sns
-import tabulate
-from tabulate import tabulate
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
-from sklearn.discriminant_analysis import QuadraticDiscriminantAnalysis
-import warnings
+import math
 
 sns.set_context("paper", font_scale=2.5, rc={"lines.linewidth": 2})
 sns.set_palette("colorblind", 10)
-sns.set_style("ticks", {"xtick.direction": "in","ytick.direction": "in"})
+sns.set_style("ticks", {"xtick.direction": "in", "ytick.direction": "in"})
 
 # global parameters and variables
 df_phylum = 'supplementary/phytoplankton/170427_algae.txt'
@@ -70,24 +55,18 @@ filters_color_dict = {"ch01": 'darkred',
                       "ch03": 'Steelblue',
                       "ch04": 'Goldenrod'}
 
-#!!!TODO: update / shorten code
-
 
 # ---------------------------------------------------------------------------------------------------------------------
-def prescan_load_file(filename, device=1, kappa_spec=None, pumprate=None, ampli=None, correction=True,
-                      full_calibration=True, blank_corr=True, factor=1, blank_mean_ex=None, blank_std_ex=None,
-                      unit_blank=None, additional=False):
+def prescan_load_file(filename, file_em, device=1, kappa_spec=None, pumprate=None, correction=True, blank_corr=True,
+                      full_calibration=True, blank_mean_ex=None, blank_std_ex=None, factor=1, unit_blank=None):
     # ---------------------------------------------------------------------------------------------------------
     # Load data file, which is optionally blank corrected.
     # signal (optionally blank corrected), header and unit of measurement signal (nW or pW)
-
-    [l, header, unit] = read_rawdata(filename=filename, additional=additional, co=None, factor=factor, plot_raw=False,
-                                     blank_corr=blank_corr, blank_mean_ex=blank_mean_ex, blank_std_ex=blank_std_ex)
+    [l, header, unit] = read_rawdata(filename=filename, factor=factor, plot_raw=False, blank_corr=blank_corr,
+                                     blank_mean_ex=blank_mean_ex)
 
     # ensure that everything is calculated in nW
-    if unit == 'nW':
-        l_ = l
-    elif unit == 'pW':
+    if unit == 'pW':
         l_ = l.copy()
         for i in l.columns:
             for k in l.index:
@@ -99,13 +78,16 @@ def prescan_load_file(filename, device=1, kappa_spec=None, pumprate=None, ampli=
             for k in l.index:
                 l_.loc[k, i] = l.loc[k, i] * 1000
         unit = 'nW'
+    else:
+        # unit should then be nW
+        l_ = l
 
     # general information about the file. The blank value is a combination of header and external file or just extracted
     # from file, respectively
     path = os.path.dirname(filename)
-    [dd, name, date, current, blank_mean, blank_std, unit_blank, LED_wl, LEDs, amplif,
-     pumprate] = info_about_file_extend(filename, header, blank_mean_ex=blank_mean_ex, blank_std_ex=blank_std_ex,
-                                        pumprate=pumprate, MAZeT=ampli, unit_blank=unit_blank)
+    [name, date, current, blank_mean, blank_std, unit_blank, LEDs,
+     pumprate] = file_info_extend(filename, header, blank_mean_ex=blank_mean_ex, blank_std_ex=blank_std_ex,
+                                  pumprate=pumprate, unit_blank=unit_blank)
     firstline = pd.read_csv(filename, sep='\t', header=None, nrows=1, converters={0: lambda x: x[2:]})
 
     # defining measurement time and volume based on pump speed
@@ -120,9 +102,11 @@ def prescan_load_file(filename, device=1, kappa_spec=None, pumprate=None, ampli=
     if correction is True:
         # Emission-site correction: Balance different transmission properties of the emission filters if correction is
         # True. Dimension of correction factor is [1] or [%]
-        l_em_balanced = emission_correction_table(l_, device, rg9_sample, rg665_sample, led_order=LEDs)
+        l_em_balanced = em_corr_table(file_em=file_em, df=l_, device=device, led_order=LEDs, RG9=rg9_sample,
+                                      RG665=rg665_sample)
         blank_mean_ = pd.DataFrame(blank_mean, index=LEDs)
-        blank_em_bal = emission_correction_table(blank_mean_.T, device, rg9_sample, rg665_sample, led_order=LEDs)
+        blank_em_bal = em_corr_table(file_em=file_em, df=blank_mean_.T, device=device, led_order=LEDs, RG9=rg9_sample,
+                                     RG665=rg665_sample)
 
         # Excitation-site correction: Correction of the LED intensities for standardizing the measurement and
         # inter-comparability. Load correction factors for rhodamine 101 12mM in ethylene glycol(internal quantum
@@ -130,43 +114,29 @@ def prescan_load_file(filename, device=1, kappa_spec=None, pumprate=None, ampli=
         # Dimension of correction factor is []
         l_corr = correction_led_table(l_em_balanced, kappa_spec, date, current, peakcolumns=l_.columns,
                                       full_calibration=full_calibration)
-
         blank_corrected = correction_led_table(blank_em_bal, kappa_spec, date, current, peakcolumns=l_.columns,
                                                full_calibration=full_calibration).values[0]
         unit_corr = 'rfu'
     else:
-        l_corr = l_
-        unit_corr = unit
-        if isinstance(blank_mean, list):
-            blank_corrected = blank_mean
-        else:
-            blank_corrected = blank_mean.tolist()
-
+        l_corr, unit_corr = l_, unit
+        blank_corrected = blank_mean if isinstance(blank_mean, list) else blank_mean.tolist()
     return l_, l_corr, header, firstline, current, date, name, blank_mean, blank_std, blank_corrected, rg9_sample, \
            rg665_sample, volume, pumprate, unit, unit_corr, unit_blank, path
 
 
-def read_rawdata(filename, additional=False, co=None, factor=1., blank_corr=True, blank_mean_ex=None,
-                 blank_std_ex=None, plot_raw=False):
+def read_rawdata(filename, factor=1., blank_corr=True, blank_mean_ex=None, plot_raw=False):
     """ Reads one data file and loads data within this file. Optionally the data could be corrected by the mean value
     of the blank.
     :param filename:        path to the file and name of file
-    :param additional:      additional offset-compensation
-    :param co:              path to the offset-compensation optimisation measurement
     :param factor:          float; can be used to amplify the light-measurement, when the offset_compensation is not
                             working properly
-    :param: blank:          if the separate blank calculation based on an external file if preferred. Please refer the
-                            path.
     :param blank_corr:      optional blank correction of data
     :param blank_mean_ex:
-    :param blank_std_ex:    optionally definition of the deviation of the blank,'cause the calculated value is not valid
-                            at the moment
     :param plot_raw:        time drive plot of this file
     :return: pandas.DataFrame:  containing the processed data for one algal sample at each LED
     """
-
     # load name of the file and slide it into subsections to extract the file information.
-    [dd, algae, date] = info_about_file(filename)
+    algae = os.path.basename(filename).split('.')[0]
 
     # current version of the data file
     # read file with the light-data and the dark-data and the header as well in a separate file.
@@ -175,16 +145,12 @@ def read_rawdata(filename, additional=False, co=None, factor=1., blank_corr=True
                              usecols=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]) * factor
     data_dark = pd.read_csv(filename, sep='\t', skiprows=6, usecols=[0, 16, 17, 18, 19, 20, 21, 22, 23],
                             encoding="latin-1") * factor
-    header_ = pd.read_csv(filename, sep='\t', header=None, skiprows=1, nrows=5, converters={0: lambda x: x[2:]},
-                          encoding="latin-1")[:7]
-    header = header_
+    header = pd.read_csv(filename, sep='\t', header=None, skiprows=1, nrows=5, converters={0: lambda x: x[2:]},
+                         encoding="latin-1")[:7]
 
     # extracting LED information and signal unit from header
     unit = data_light.columns[1].split(' ')[1][1:3]
-
-    [dd, name, date, current, blank_mean, blank_std, unit_blank, LED_wl, LEDs, MAZeT,
-     pumprate] = info_about_file_extend(filename, header, blank_mean_ex=blank_mean_ex, blank_std_ex=blank_std_ex,
-                                        pumprate=None, MAZeT=None)
+    [date, blank_mean, LEDs] = file_info_sort(filename=filename, header=header, blank_mean_ex=blank_mean_ex)
 
     data = data_light.copy()
     i = 0
@@ -243,217 +209,6 @@ def read_rawdata(filename, additional=False, co=None, factor=1., blank_corr=True
     return data_corr, header, unit
 
 
-def read_peak(filename, volume, kappa_spec, correction, device=1., additional=False, blank=None, blank_corr=True,
-              blank_mean_ex=None, blank_std_ex=None, normalize=False):
-    """ Detects the data points over the detection limit (=peak) from a raw data file and calculates the mean values
-    for each LED
-    :param:     filename:   path to the raw data file
-                volume:
-                blank_corr: optional blank correction. Default is True
-                blank_mean: optionally definition of the mean value of the blank,'cause the calculated value is not
-                            valid at the moment
-                blank_std:  optionally definition of the deviation of the blank,'cause the calculated value is not
-                            valid at the moment
-                normalize:  optional normalisation of averaged signal intensities. Default is True
-    :return:    pd.Series:  calculated mean values for each LED for one given sample
-    """
-
-    # load time drive data of a certain file
-    [df, header, unit] = read_rawdata(filename, additional=additional, blank_corr=blank_corr,
-                                      blank_mean_ex=blank_mean_ex, blank_std_ex=blank_std_ex, plot_raw=False)
-    [dd, name, date, current, blank_mean, blank_std, unit_blank, LED_wl, LEDs, MAZeT,
-     pumprate] = info_about_file_extend(filename, header, blank_mean_ex=blank_mean_ex, blank_std_ex=blank_std_ex,
-                                        pumprate=None, MAZeT=None)
-
-    # Plotting of training objects to select sample range
-    f, ax = plt.subplots(figsize=(7, 5))
-    for i in df.columns:
-        alg = df[i].dropna()
-        ax.plot(alg.index, alg, color=led_color_dict[i], label=i)
-    plt.tick_params(labelsize=12)
-    plt.xlabel('Time [s]', fontsize=12)
-    plt.ylabel('Fluorescence intensity', fontsize=12)
-    plt.title('{} \n Select sample range (first) and then baseline for correction!'.format(name), fontsize=11)
-
-    coords = []
-    def onclick(event):
-        global ix, iy
-        ix, iy = event.xdata, event.ydata
-        coords.append(ix)
-        if len(coords) == 4:
-            f.canvas.mpl_disconnect(cid)
-        return coords
-
-    cid = f.canvas.mpl_connect('button_press_event', onclick)
-    plt.show()
-
-    # control of coords
-    for el in range(len(coords)):
-        if coords[el] == None:
-            coords[el] = 0
-    while 1 < len(coords) < 4:
-        coords.append(0)
-
-    [rg9, rg665] = LED_Filter(LEDs)
-
-    # extract the detection limit depending if there's a blank correction or not
-    LoD = detection(header=header, rg665=rg665, rg9=rg9, kappa_spec=kappa_spec, date=date,
-                    current=current, full_calibration=False, blank_corr=blank_corr, blank_mean=blank_mean,
-                    blank_std=blank_std, correction=correction, device=int(device))
-
-    # extract the peaks in the raw data file
-    [c, peak, mean] = counter(df, LoD=LoD.values[0], volume=volume, division=None, warn=False)
-
-    # calculate the mean values for each LED from detected peaks
-    mean_ = peak.mean().fillna(0)
-
-    # normalize the data for one sample over the whole row
-    if normalize is True:
-        mean_ = mean_/mean_.max()
-    mean_.set_index = df.name
-    mean_.name = df.name
-
-    return mean_
-
-
-def read_directory(dirname, volume, kappa_spec, device=1., correction=False, additional=False,
-                   blank_corr=True, blank_mean_ex=None, blank_std_ex=None, normalize=True, standardize=False):
-    """ Reads a directory and loads all data files. Returns a normalized data frame.
-    Data could be standardized (combined with the normalization or without) if it is preferred
-
-    :param: dirname:        path to data directory
-            volume:
-            blank_corr:     blank correction of the raw data desired?
-            blank_mean:     give an external calculated average of the blank measurement
-            blank_std:      give an external calculated deviation of the blank measurement
-            normalize:      processing of the raw data, default is True
-            standardize:    additional processing of (normalized) data, default is False
-    :return: pandas.DataFrame:  containing the processed mean values for each algae sample at each LED
-    """
-
-    # load data by the mean of the function read_file. The data could be normalized over the row.
-    l1 = [read_peak(i, volume=volume, kappa_spec=kappa_spec, correction=correction, device=device,
-                    additional=additional, blank_corr=blank_corr, blank_mean_ex=blank_mean_ex,
-                    blank_std_ex=blank_std_ex, normalize=normalize)
-          for i in glob(dirname + '/*_*.txt')]
-
-    current_extract = [current_extraction(p) for p in glob(dirname + '/*_*.txt')]
-    date_extract = [date_extration(q) for q in glob(dirname + '/*_*.txt')]
-    rg9 = [filter_extraction_rg9(q) for q in glob(dirname + '/*_*.txt')]
-    rg665 = [filter_extraction_rg665(q, rg9) for q in glob(dirname + '/*_*.txt')]
-
-    # combining mean values of trainings matrix
-    df = pd.concat(l1, axis=1).T
-    # set negative values to quasi-zero!
-    df[df < 0] = 1E-9
-    # combine current of different samples
-    df_current = pd.concat(current_extract, axis=0)
-    df_date = pd.DataFrame(date_extract)
-
-    # execute standardization, if preferred for the algae sample. Transformation is necessary to calculate
-    # the mean of the row (algae) instead of the columns (LEDs). Re-transformation is used afterwards to
-    # obtain the common matrix.
-    if standardize is True:
-        df = ((df.T - df.T.mean())/df.T.std()).T
-
-    return df, df_current, rg9[0], rg665[0], df_date
-
-
-def filter_extraction_rg9(filename):
-
-    header_ = pd.read_csv(filename, sep='\t', header=None, skiprows=1, nrows=5, converters={0: lambda x: x[2:]})
-    header = header_.loc[:, :7]
-    q1 = pd.DataFrame(header.loc[1, :][:2])
-    q1.index = ['PD1', 'PD1']
-    q2 = pd.DataFrame(header.loc[1, :][2:4])
-    q2.index = ['PD2', 'PD2']
-    q3 = pd.DataFrame(header.loc[1, :][4:6])
-    q3.index = ['PD3', 'PD3']
-    q4 = pd.DataFrame(header.loc[1, :][6:8])
-    q4.index = ['PD4', 'PD4']
-    photo = pd.concat([q1, q2, q3, q4])
-    photo.columns = [0]
-    photodiode = []
-    for k in range(len(photo.index)):
-        photodiode.append(photo.loc[k, 0].split(' ')[2] + ' nm')
-    photodiode = pd.DataFrame(photodiode, index=photo.index)
-
-    rg9 = []
-    rg9_list = []
-    rg9_list = []
-    i = 0
-    for el, i in enumerate(photodiode[0]):
-        if i == '640 nm':
-            rg9 = photodiode.index[el]
-    rg9_list = photodiode.loc[rg9, 0].tolist()
-
-    return rg9_list
-
-
-def filter_extraction_rg665(filename, rg9):
-
-    header_ = pd.read_csv(filename, sep='\t', header=None, skiprows=1, nrows=5, converters={0: lambda x: x[2:]})
-    header = header_.loc[:, :7]
-    q1 = pd.DataFrame(header.loc[1, :][:2])
-    q1.index = ['PD1', 'PD1']
-    q2 = pd.DataFrame(header.loc[1, :][2:4])
-    q2.index = ['PD2', 'PD2']
-    q3 = pd.DataFrame(header.loc[1, :][4:6])
-    q3.index = ['PD3', 'PD3']
-    q4 = pd.DataFrame(header.loc[1, :][6:8])
-    q4.index = ['PD4', 'PD4']
-    photo = pd.concat([q1, q2, q3, q4])
-    photo.columns = [0]
-    photodiode = []
-    for k in range(len(photo.index)):
-        photodiode.append(photo.loc[k, 0].split(' ')[2] + ' nm')
-    photodiode = pd.DataFrame(photodiode, index=photo.index)
-
-    rg665 = photodiode[0].tolist()
-    rg665.remove(rg9[0][0])
-    rg665.remove(rg9[0][1])
-
-    return rg665
-
-
-def date_extration(filename):
-    """
-
-    :param filename:
-    :return:
-    """
-    dd_ = os.path.basename(filename).split('.')[0]
-    dd = dd_.split('_')[0]
-
-    return dd
-
-
-def current_extraction(filename):
-    """
-
-    :param      filename:
-    :return:    current_:
-    """
-    dd = os.path.basename(filename).split('.')[0]
-    name = dd.split('_')[1]
-
-    header_ = pd.read_csv(filename, sep='\t', header=None, skiprows=1, nrows=5, converters={0: lambda x: x[2:]})
-    header = header_.loc[:, :7]
-
-    LEDs = []
-    for e in header.loc[1, :]:
-        LEDs.append(e.split(' ')[-2] + ' nm')
-
-    current = []  # mA
-    for i in header.loc[2, :]:
-        current.append(int(i.split('=')[1].split('mA')[0]))
-    current_ = pd.DataFrame(current, index=LEDs, columns=[name]).T
-    current_.set_index = name
-    current_.name = name
-
-    return current_
-
-
 def rearrange_datamatrix(data):
     d1 = data.iloc[:, 0:2]
     d2 = data.iloc[:, 2:4]
@@ -468,42 +223,46 @@ def rearrange_datamatrix(data):
     return ld
 
 
-def info_about_file(filename):
+def file_info_sort(filename, header, blank_mean_ex):
     """
-
     :param filename:
+    :param header:
+    :param blank_mean_ex:
     :return:
     """
-    dd = os.path.basename(filename).split('.')[0]
-    name = dd.split('_')[1]
-    date = dd.split('_')[0]
+    date = os.path.basename(filename).split('.')[0].split('_')[0]
 
-    return dd, name, date
+    # Extract the blank calculated and stored in the header
+    blank_mean_header, unit_blank_header = [], []
+    for k in header.loc[4, :]:
+        if isinstance(k, np.float) is False:
+            blank_mean_header.append(float(k.split('=')[1].split('+/-')[0]))
+            unit_blank_header.append(k.split('=')[1][-2:])
+
+    if unit_blank_header[0] == 'pA' or unit_blank_header[0] == 'pW':
+        for p, q in enumerate(blank_mean_header):
+            blank_mean_header[p] = (q / 1000)
+
+    # combine blank from external file and from header if both are necessary
+    blank_mean = [sum(x) for x in zip(blank_mean_header, blank_mean_ex)] if blank_mean_ex else blank_mean_header
+    LEDs = [e.split(' ')[-2] + ' nm' for e in header.loc[1, :] if isinstance(e, np.float) is False]
+
+    return date, blank_mean, LEDs
 
 
-def info_about_file_extend(filename, header, blank_mean_ex, blank_std_ex, pumprate=None, MAZeT=None, unit_blank=None):
+def file_info_extend(filename, header, blank_mean_ex, blank_std_ex, pumprate=None, unit_blank=None):
     """
-
     :param filename:
     :param header:
     :param blank_mean_ex:
     :param blank_std_ex:
     :param pumprate:
-    :param MAZeT:       internal signal amplification in Ohm
+    :param unit_blank:
     :return:
     """
-    dd = os.path.basename(filename).split('.')[0]
-    name = dd.split('_')[1]
-    date = dd.split('_')[0]
-
+    name = os.path.basename(filename).split('.')[0].split('_')[1]
     gen_info = pd.read_csv(filename, sep='\t', header=None, nrows=1, converters={0: lambda x: x[2:]})
-    amplif = int(gen_info.loc[0, 0].split('=')[1][:-1])            # Ohm
-    amplif_unit = gen_info.loc[0, 0].split('=')[1][-1]
-    # multipling MAZeT amplification in order to obtain amplification in Ohm
-    if amplif_unit == 'M':
-        amplif = int(amplif * 1E6)
-    elif amplif_unit == 'k':
-        amplif = int(amplif * 1E3)
+    [date, blank_mean, LEDs] = file_info_sort(filename=filename, header=header, blank_mean_ex=blank_mean_ex)
 
     if not pumprate:
         pumprate = float(gen_info.loc[0, 2].split('=')[1])  # mL/min
@@ -513,174 +272,61 @@ def info_about_file_extend(filename, header, blank_mean_ex, blank_std_ex, pumpra
         if isinstance(i, np.float) is False:
             current.append(int(float(i.split('=')[1].split('mA')[0].strip())))
 
-    ADC = []  # V
-    for l in header.loc[3, :]:
-        if isinstance(l, np.float) is False:
-            ADC.append(l.split(' ')[-1])
-
-    blank_mean_header = []
-    blank_std_header = []
-    unit_blank_header = []
+    blank_std_header, unit_blank_header = [], []
     # Extract the blank calculated and stored in the header
     for k in header.loc[4, :]:
         if isinstance(k, np.float) is False:
-            blank_mean_header.append(float(k.split('=')[1].split('+/-')[0]))
             blank_std_header.append(float(k.split('=')[1].split('+/-')[1][:-2]))
             unit_blank_header.append(k.split('=')[1][-2:])
 
     if unit_blank_header[0] == 'pA' or unit_blank_header[0] == 'pW':
-        for p, q in enumerate(blank_mean_header):
-            blank_mean_header[p] = (q / 1000)
-            unit_blank_header = 'nW'
         for p, q in enumerate(blank_std_header):
             blank_std_header[p] = (q / 1000)
             unit_blank_header = 'nW'
 
     # combine blank from external file and from header if both are necessary
-    if blank_mean_ex:
-        blank_mean = [sum(x) for x in zip(blank_mean_header, blank_mean_ex)]
-        blank_std = [sum(x) for x in zip(blank_std_header, blank_std_ex)]
-    else:
-        blank_mean = blank_mean_header
-        blank_std = blank_std_header
-
-    LED_wl = []
-    LEDs = []
-    for e in header.loc[1, :]:
-        if isinstance(e, np.float) is False:
-            LED_wl.append(int(e.split(' ')[-2]))
-            LEDs.append(e.split(' ')[-2] + ' nm')
-
+    blank_std = [sum(x) for x in zip(blank_std_header, blank_std_ex)] if blank_mean_ex else blank_std_header
     if unit_blank is None:
         unit_blank = unit_blank_header
 
-    return dd, name, date, current, blank_mean, blank_std, unit_blank, LED_wl, LEDs, amplif, pumprate
+    return name, date, current, blank_mean, blank_std, unit_blank, LEDs, pumprate
 
 
 def LED_Filter(name):
     """
-
     :param name:
     :return:
     """
-
+    # original order: '526 nm', '438 nm', '593 nm', '453 nm', '380 nm', '472 nm', '403 nm', '640 nm'
     diodeI = pd.DataFrame(name[0:2], index=['PD1', 'PD1'])
     diodeII = pd.DataFrame(name[2:4], index=['PD2', 'PD2'])
     diodeIII = pd.DataFrame(name[4:6], index=['PD3', 'PD3'])
     diodeIV = pd.DataFrame(name[6:], index=['PD4', 'PD4'])
     photodiode = pd.concat([diodeI, diodeII, diodeIII, diodeIV])
 
-    i = 0
+    # Search for 640nm-LED (only one that has to be with filter RG665). This photodiode shall be collected in RG665.
+    rg9 = None
     for el, i in enumerate(photodiode[0]):
-        if i == '640 nm':
+        if i == 640.0 or i == '640 nm':
             rg9 = photodiode.index[el]
-    RG9 = photodiode.loc[rg9, 0].tolist()
-    RG665 = photodiode[0].tolist()
-    RG665.remove(RG9[0])
-    RG665.remove(RG9[1])
+    if rg9:
+        RG9 = photodiode.loc[rg9, 0].tolist()
+        RG665 = photodiode[0].tolist()
+        RG665.remove(RG9[0])
+        RG665.remove(RG9[1])
+    else:
+        RG9, RG665 = photodiode[0].tolist(), None
 
+    # convert to expected format of 'XY nm' for each LED
+    if isinstance(RG9[0], float):
+        RG9 = [str(int(i)) + ' nm' for i in RG9]
+        if RG665:
+            RG665 = [str(int(i)) + ' nm' if i != 0. else i for i in RG665]
     return RG9, RG665
-
-
-def processed_data_load_file(file):
-    d = pd.read_csv(file, sep='\t', index_col=0, header=None, encoding='latin-1')
-
-    sample_name = d.loc[0, 1]
-    ind = []
-    for i in d.loc['LED', :].tolist():
-        ind.append(str(i)[:-2])
-    cur = []
-    for k in d.loc[4, :]:
-        cur.append(float(k.split(' ')[2]))
-    ampli = d.loc[1, 1].split('=')[1]
-    datum = d.loc[0, 2].split(' ')[0]
-    time = d.loc[0, 2].split(' ')[1][:-1]
-    date = datum.split('.')[2] + datum.split('.')[1] + datum.split('.')[0] + time.split(':')[0] + time.split(':')[1]
-
-    if len(d.index) >= 14:
-        # now with counted cells in result file
-        volume = float(d.index[10].split('/')[1].split('mL')[0])
-        counted_cells_ = d.loc[d.index[10], :].tolist()
-        # LED info as float without 'nm'
-        counted_cells = pd.DataFrame(counted_cells_, index=d.loc['LED', :], columns=[d.index[10]]).T
-        lod = d.loc[d.index[11], :].tolist()
-        lod = pd.DataFrame(lod, index=d.loc['LED', :], columns=[d.index[11]]).T
-    else:
-        volume = NaN
-        counted_cells = []
-        lod = []
-
-    if 'mean value [pW]' in d.index:
-        led_mean = pd.DataFrame([d.loc['mean value [pW]', :]],
-                                index=[sample_name]).T  # blank corrected and corrected em-/ex-site
-        led_mean.index = ind
-        unit = 'pW'
-    elif 'mean value [nW]' in d.index:
-        led_mean = pd.DataFrame([d.loc['mean value [nW]', :]],
-                                index=[sample_name]).T  # blank corrected and corrected em-/ex-site
-        led_mean.index = ind
-        unit = 'nW'
-    elif 'mean value [µW]' in d.index:
-        led_mean = pd.DataFrame([d.loc['mean value [µW]', :]],
-                                index=[sample_name]).T  # blank corrected and corrected em-/ex-site
-        led_mean.index = ind
-        unit = 'µW'
-
-    # transfer mean values to nW
-    if unit == 'pW':
-        for i in led_mean.index:
-            led_mean.loc[i, led_mean.columns[0]] = (float(led_mean.loc[i, led_mean.columns[0]]) / 1000)
-    for t in led_mean.index:
-        led_mean.loc[t, led_mean.columns[0]] = float(led_mean.loc[t, led_mean.columns[0]])
-
-    return led_mean, sample_name, cur, ampli, volume, lod, counted_cells, unit, date
-
-
-def led_reduction(LED380_checkbox, LED403_checkbox, LED438_checkbox, LED453_checkbox, LED472_checkbox,
-                  LED526_checkbox, LED593_checkbox, LED640_checkbox):
-    # reduce number of LEDs used for LDA
-    led_used = pd.DataFrame(np.zeros(shape=(8, 1)),
-                            index=['380 nm', '403 nm', '438 nm', '453 nm', '472 nm', '526 nm', '593 nm', '640 nm']).T
-
-    if LED380_checkbox is True:
-        led_used.loc[0, '380 nm'] = True
-    else:
-        led_used.loc[0, '380 nm'] = False
-    if LED403_checkbox is True:
-        led_used.loc[0, '403 nm'] = True
-    else:
-        led_used.loc[0, '403 nm'] = False
-    if LED438_checkbox is True:
-        led_used.loc[0, '438 nm'] = True
-    else:
-        led_used.loc[0, '438 nm'] = False
-    if LED453_checkbox is True:
-        led_used.loc[0, '453 nm'] = True
-    else:
-        led_used.loc[0, '453 nm'] = False
-    if LED472_checkbox is True:
-        led_used.loc[0, '472 nm'] = True
-    else:
-        led_used.loc[0, '472 nm'] = False
-    if LED526_checkbox is True:
-        led_used.loc[0, '526 nm'] = True
-    else:
-        led_used.loc[0, '526 nm'] = False
-    if LED593_checkbox is True:
-        led_used.loc[0, '593 nm'] = True
-    else:
-        led_used.loc[0, '593 nm'] = False
-    if LED640_checkbox is True:
-        led_used.loc[0, '640 nm'] = True
-    else:
-        led_used.loc[0, '640 nm'] = False
-
-    return led_used
 
 
 def algae_dictionary(filename):
     """
-
     :param filename:
     :return:
     classes_dict:   dictionary containing genus names as keys and taxonomic level (phylum, class, order, family) as
@@ -688,7 +334,6 @@ def algae_dictionary(filename):
     color_dict:     dictionary containing genus names as keys and colors as values
     genus_names:  list with the genus names
     """
-
     # load excel file with all information about algae genus
     qqt = pd.read_csv(filename, sep='\t', header=None, encoding="latin-1")
 
@@ -697,12 +342,9 @@ def algae_dictionary(filename):
     color_dict = {}
     colorclass_dict = {}
 
-    re = qqt[0]
-    key_list = re.values.tolist()
-    re = qqt[1]
-    values_list = re.values.tolist()
-    re = qqt[2]
-    color_list = re.values.tolist()
+    key_list = qqt[0].values.tolist()
+    values_list = qqt[1].values.tolist()
+    color_list = qqt[2].values.tolist()
     genus_names = key_list
 
     # creating dictionary
@@ -753,7 +395,8 @@ def separation_level(separation):
     elif separation == 'order':
         [classes_dict, color_dict, colorclass_dict,
          genus_names] = algae_dictionary('supplementary/phytoplankton/170427_algalorder.txt')
-    elif separation == 'family':
+    else:
+        # separation is family
         [classes_dict, color_dict, colorclass_dict,
          genus_names] = algae_dictionary('supplementary/phytoplankton/170427_algalfamily.txt')
 
@@ -761,18 +404,15 @@ def separation_level(separation):
 
 
 def taxonomic_level_reduction(prob, separation='phylum', likelyhood=False):
-
     # load general taxonomic information about algae
     df_phylum = 'supplementary/phytoplankton/170427_algae.txt'
     alg_group = pd.read_csv(df_phylum, sep='\t', encoding="latin-1")
 
     # prepare data matrices for data reduction
-    probability = pd.DataFrame(prob[0]) # for all identified groups
-    prob_total = sum(probability)  # 100% for all identified groups
-    prob_red = []
-    prob_red_gauss_ = []
+    probability = pd.DataFrame(prob[0])  # for all identified groups
 
-    alg_phylum = alg_group['phylum'].drop_duplicates().tolist()[:-1] # last point is "sample" not needed in this DF
+    # last point is "sample" not needed in this DF
+    alg_phylum = alg_group['phylum'].drop_duplicates().tolist()[:-1]
     prob_group_all = pd.DataFrame(np.zeros(shape=(1, len(alg_phylum))), columns=alg_phylum)
 
     # classify the identified algal group in the DataFrame according to their phylum
@@ -780,18 +420,16 @@ def taxonomic_level_reduction(prob, separation='phylum', likelyhood=False):
         phylum = alg_group[alg_group[separation] == probability.index[i]]['phylum'].values[0]
         prob_group_all.loc[i, phylum] = probability.loc[probability.index[i], 'gaussian prob.']
 
-    group_prob_ = pd.DataFrame(sum(prob_group_all), columns=['phylum probability'])
-    group_prob = group_prob_ / prob_total.tolist()[0] * 100
-
     # reduce too detailed information of algal separation level to the higher - more general / more secure level phylum
+    prob_red, prob_red_gauss_ = [], []
     for i in range(len(probability.index)):
         phyl = alg_group[alg_group[separation] == probability.index[i]]['phylum'].values[0]
         if likelyhood is True:
             phyl_prob = probability['gaussian prob.'][i]
-
-        if phyl in prob_red:
-            pass
         else:
+            phyl_prob = 0
+
+        if phyl not in prob_red:
             prob_red.append(phyl)
             if likelyhood is True:
                 prob_red_gauss_.append(phyl_prob.round(2))
@@ -801,7 +439,7 @@ def taxonomic_level_reduction(prob, separation='phylum', likelyhood=False):
         a = t / sum(prob_red_gauss_) * 100
         prob_red_gauss.append(a.round(2))
 
-    return prob_red, prob_red_gauss, group_prob
+    return prob_red, prob_red_gauss
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -822,9 +460,8 @@ def pre_process(df, normalize=True, standardize=True):
     return df
 
 
-def detection(header, rg665, rg9, kappa_spec, date, current, unit_blank, full_calibration=False, blank_corr=True,
-              blank_mean=None, blank_std=None, correction=True, device=1):
-
+def detection(header, rg665, rg9, kappa_spec, date, current, unit_blank, device=1, file_em=None, full_calibration=False,
+              blank_corr=True, blank_mean=None, blank_std=None, correction=True):
     """ Define the LoD from the raw data file depending if there's a blank correction or not. When the data are blank
     corrected you only need the standard deviation of the blank for the LoD. The mean values and the standard deviation
     of the blank measurement for each LED will be extracted to define the LoD (for a qualitative approach).
@@ -840,34 +477,29 @@ def detection(header, rg665, rg9, kappa_spec, date, current, unit_blank, full_ca
     """
     # get the specific order of the LEDs in the device
     led_order = [led.split(' ')[2] + ' nm' for led in header.loc[1, :] if isinstance(led, str)]
-
-    [mean_ex_corr, std_ex_corr, unit_blank] = mean_conversion(led_order=led_order, rg665=rg665, rg9=rg9,
-                                                          kappa_spec=kappa_spec, date=date, current=current,
-                                                          unit_blank=unit_blank, full_calibration=full_calibration,
-                                                          blank_mean=blank_mean, blank_std=blank_std,
-                                                          correction=correction, device=device)
+    [mean_ex_corr, std_ex_corr] = mean_conversion(led_order=led_order, rg665=rg665, rg9=rg9, date=date, file_em=file_em,
+                                                  kappa_spec=kappa_spec, current=current, unit_blank=unit_blank,
+                                                  full_calibration=full_calibration, blank_mean=blank_mean,
+                                                  blank_std=blank_std, device=device, correction=correction)
 
     # calculation of LoD depending whether the data are raw or blank corrected data
-    LoD = []
+    ls_mean = mean_ex_corr.loc[mean_ex_corr.index[0], :].tolist()
+    ls_std = std_ex_corr.loc[std_ex_corr.index[0], :].tolist()
     if blank_corr:
         # the mean value of the blank was subtracted before
-        for i in range(len(mean_ex_corr.loc[mean_ex_corr.index[0], :].tolist())):
-            LoD.append(3*std_ex_corr.loc[std_ex_corr.index[0], :].tolist()[i])
+        LoD = [3*ls_std[i] for i in range(len(ls_mean))]
     else:
         # the mean value of the blank has to be taken into account
-        for i in range(len(mean_ex_corr.loc[mean_ex_corr.index[0], :].tolist())):
-            LoD.append(mean_ex_corr.loc[mean_ex_corr.index[0], :].tolist()[i] +
-                       3*std_ex_corr.loc[std_ex_corr.index[0], :].tolist()[i])
-    LoD = pd.DataFrame(LoD, index=led_order, columns=[int(device)]).T
-
+        LoD = [ls_mean[i] + 3*ls_std[i] for i in range(len(ls_mean))]
+    LoD = pd.DataFrame(LoD, index=mean_ex_corr.columns, columns=[int(device)]).T
     return LoD
 
 
-def counter(l, LoD, volume, xcoords=None, division=None, warn=True):
+def counter(df, LoD, volume, xcoords=None, division=None, warn=True):
     """ Counting measurement data which are higher than the LoD for each LED. The number of detected peaks will be
     stored as well as the intensities of the peaks. Finally the mean values for all LEDs will be calculated after
     the peak detection.
-    :param:     l:          peak extracted data that should be counted
+    :param:     df:         peak extracted data that should be counted
                 LoD:        detection limit to define what is a peak
                 division:   which LEDs are important
                 warn:       warning can be hidden optionally. Default there's a warning
@@ -875,15 +507,14 @@ def counter(l, LoD, volume, xcoords=None, division=None, warn=True):
                 peak = pandas.DataFrame:detected peaks for each LED
                 mean = pandas.Series:   mean values of all LEDs after the peak identification
     """
-
     if not division:
         division = [453, 593]
     if xcoords is None:
         # assume only sample is measured in the file. Blank is separate.
-        xcoords = [l.index[0], l.index[-1], 0, 0]
+        xcoords = [df.index[0], df.index[-1], 0, 0]
 
     # extracting the peaks
-    peak = l.copy()
+    peak = df.copy()
 
     for i, k in enumerate(peak.columns):    # i = numbers, k = wavelengths
         peak[k][peak[k] < LoD[i]] = np.nan
@@ -892,7 +523,7 @@ def counter(l, LoD, volume, xcoords=None, division=None, warn=True):
     # which has to be taken into account
     c = pd.Series([0]*len(peak.columns), index=peak.columns)
     for i in range(len(c)):                                         # number of rows in c (= number of LEDs, i = 0-7)
-        cnm = l[c.index[i]].dropna()                                # copy of l but without NaN-entries
+        cnm = df[c.index[i]].dropna()                               # copy of l but without NaN-entries
         for k in range(len(cnm) - 1):
             if cnm.iloc[k] < LoD[i] and cnm.iloc[k + 1] >= LoD[i]:  # single peaks found in the file
                 c[c.index[i]] += 1
@@ -936,7 +567,7 @@ def counter(l, LoD, volume, xcoords=None, division=None, warn=True):
     return c, peak, mean
 
 
-def mean_conversion(led_order, rg665, rg9, kappa_spec, date, current, unit_blank, full_calibration=False,
+def mean_conversion(led_order, rg665, rg9, kappa_spec, date, current, unit_blank, file_em, full_calibration=False,
                     blank_mean=None, blank_std=None, correction=True, device=1):
     # convert depending  on unit into nW:
     if unit_blank == 'nW':
@@ -945,12 +576,10 @@ def mean_conversion(led_order, rg665, rg9, kappa_spec, date, current, unit_blank
         # from 1pW into 1nW
         blank_mean = [i / 1000 for i in blank_mean]
         blank_std = [i / 1000 for i in blank_std]
-        unit_blank = 'nW'
     elif unit_blank == 'µW':
         # from 1µW into 1nW
         blank_mean = [i * 1000 for i in blank_mean]
         blank_std = [i * 1000 for i in blank_std]
-        unit_blank = 'nW'
 
     # first correction then addition ("punkt vor strich"). Blank mean was (in case) corrected previously
     blank_mean = pd.DataFrame(blank_mean, index=led_order, columns=[int(device)]).T
@@ -960,48 +589,49 @@ def mean_conversion(led_order, rg665, rg9, kappa_spec, date, current, unit_blank
     if correction is True:
         # Emission-site correction: Balance different transmission properties of the emission filters if correction is
         # True. Dimension of correction factor is [1] or [%]
-        blank_em_bal = emission_correction_table(blank_std, device, rg9, rg665, led_order=led_order)
+        blank_mean = em_corr_table(file_em=file_em, df=blank_std, device=device, RG9=rg9, RG665=rg665,
+                                   led_order=led_order)
 
         # Excitation-site correction: Correction of the LED intensities for standardizing the measurement and
         # inter-comparability. Load correction factors for rhodamine 101 12mM in ethylene glycol(internal quantum
         # counter) and multiply the factors with the LED intensity to get the inter-comparability / ist-LED-intensity.
         # Dimension of correction factor is []
-        blank_std = correction_led_table(blank_em_bal, kappa_spec, date, current, peakcolumns=led_order,
+        blank_std = correction_led_table(blank_mean, kappa_spec, date, current, peakcolumns=led_order,
                                          full_calibration=full_calibration)
-        unit_blank = 'rfu'
-
-    return blank_mean, blank_std, unit_blank
+    return blank_mean, blank_std
 
 
-def correction_sample(l, header, date, current, volume, device, unit_blank, led_total, kappa_spec=None, correction=True,
-                      peak_detection=True, xcoords=None, full_calibration=True, blank_corr=True, blank_mean=None,
-                      blank_std=None):
+def correction_sample(df, header, date, current, volume, device, unit_blank, led_total, kappa_spec=None, file_em=None,
+                      correction=True, peak_detection=True, xcoords=None, full_calibration=True, blank_corr=True,
+                      blank_mean=None, blank_std=None,):
     # Balance device and correct measurement data
     # sort (!all not reduced!) LEDs by emission filter RG665 or RG9 for the sample as well as for the trainings data
     [RG9_sample, RG665_sample] = LED_Filter(led_total)
 
     # define LoD (depending whether the data are blank corrected or not) and sample peaks (= data > LoD)
     # count the number of detected peaks(c), extract the peak values(peak), calculate mean values for the LEDs(mean)
-    LoD = detection(header=header, rg665=RG665_sample, rg9=RG9_sample, kappa_spec=kappa_spec, date=date, current=current,
-                    unit_blank=unit_blank, full_calibration=full_calibration, blank_corr=blank_corr, blank_std=blank_std,
-                    blank_mean=blank_mean, correction=correction, device=int(device))
+    LoD = detection(date=date, header=header, file_em=file_em, kappa_spec=kappa_spec, correction=correction,
+                    rg665=RG665_sample, rg9=RG9_sample, unit_blank=unit_blank, blank_mean=blank_mean, current=current,
+                    full_calibration=full_calibration, blank_corr=blank_corr, blank_std=blank_std, device=int(device))
 
     if peak_detection is True:
         # peak detection (Int. > LoD (peak)) and count number of peaks (c) as well as the mean value of the peaks (mean)
-        [c, peak, mean_raw] = counter(l, volume=volume, LoD=LoD.values[0], xcoords=xcoords, division=None, warn=False)
+        [c, peak, mean_raw] = counter(df, volume=volume, LoD=LoD.values[0], xcoords=xcoords, division=None, warn=False)
     else:
-        mean_raw = l.copy()
+        mean_raw = df.copy()
         mean_raw = mean_raw.mean()
         c = mean_raw.copy()
         for r in c.index:
             c[r] = '--'
-        peak = l.copy()
+        peak = df.copy()
+
     mean = pd.DataFrame(mean_raw)
     mean.columns = ['sample']
 
     if correction is True:
         # Balance different transmission properties of the emission filters
-        mean_balanced = emission_correction(mean, device, RG9_sample, RG665_sample, led_order=led_total)
+        mean_balanced = emission_correction(mean=mean, file_em=file_em, device=device, RG9_sample=RG9_sample,
+                                            RG665_sample=RG665_sample, led_order=led_total)
 
         # Correction of the LED intensities for standardizing the measurement and inter-comparability. Load correction
         # factors for rhodamine 101 12mM in ethylene glycol(internal quantum counter) and multiply the factors with the
@@ -1015,16 +645,26 @@ def correction_sample(l, header, date, current, volume, device, unit_blank, led_
     return c, peak, mean_corr, LoD
 
 
-def emission_correction(mean, device, RG9_sample, RG665_sample, led_order):
+def emission_correction(mean, file_em, device, RG9_sample, RG665_sample, led_order):
     """
     :param      mean:           mean values of the LEDs in the right order (not sorted by wavelengths) as it was
                                 measured
+    :param      file_em:
+    :param      device:
     :param      RG9_sample:     list of LEDs which are placed at the RG9 emission filter
     :param      RG665_sample:   list of LEDs which are placed at the RG665 emission filter
+    :param      led_order:
     :return:
     """
+    # double-check LEDs
+    if isinstance(led_order[0], int) or isinstance(led_order[0], float):
+        led_order = [str(int(i)) + ' nm' if i != 0. else i for i in led_order]
+
     # Load emission factors from file
-    em_path = 'supplementary/calibration/emission-site/' + '20170505_emission_device-' + str(device) + '.txt'
+    em_path = 'supplementary/calibration/emission-site/emission_device-' + str(device) + '.txt'
+    if os.path.isfile(em_path) is False:
+        print('Warning! File not found; hence we use the default file', file_em)
+        em_path = file_em
     balance_factor = pd.read_csv(em_path, sep='\t', encoding="latin-1", index_col=0, header=[0, 1])
     balance_factor.columns = led_order
 
@@ -1043,27 +683,33 @@ def emission_correction(mean, device, RG9_sample, RG665_sample, led_order):
     return mean
 
 
-def emission_correction_table(df, device, RG9, RG665, led_order):
+def em_corr_table(file_em, df, device, RG9, RG665, led_order):
     """
-    :param      mean:           mean values of the LEDs in the right order (not sorted by wavelengths) as it was
-                                measured
-    :param      RG9:            list of LEDs which are placed at the RG9 emission filter
-    :param      RG665:          list of LEDs which are placed at the RG665 emission filter
+    :param  file_em:
+    :param  df:
+    :param  device:
+    :param  RG9:
+    :param  RG665:
+    :param  led_order:
     :return:
     """
     # Load emission factors from file
-    em_path = 'supplementary/calibration/emission-site/' + '20170505_emission_device-' + str(device) + '.txt'
+    em_path = 'supplementary/calibration/emission-site/emission_device-' + str(device) + '.txt'
+    if os.path.isfile(em_path) is False:
+        print('Warning! File not found; hence we use the default file', file_em)
+        em_path = file_em
+
     balance_factor = pd.read_csv(em_path, sep='\t', encoding="latin-1", index_col=0, header=[0, 1])
     balance_factor.columns = led_order
 
-    df_em = df.copy()
     # Balance the RG665 and RG9 emission filters by LED-at-RG665 = LED-at-RG9 / balance_factor(RG665/RG9). Dimension = 1
+    df_em = pd.DataFrame(np.zeros(shape=(len(df.index), 0)), index=df.index)
     for i in RG9:
-
-        df_em[i] = df[i].values / balance_factor.loc[int(device), i]
+        if i in balance_factor.columns:
+            df_em[i] = df[i].values / balance_factor.loc[int(device), i]
     for i in RG665:
-        df_em[i] = df[i].values / balance_factor.loc[int(device), i]
-
+        if i in balance_factor.columns:
+            df_em[i] = df[i].values / balance_factor.loc[int(device), i]
     return df_em
 
 
@@ -1071,15 +717,21 @@ def correction_led(mean, kappa_spec, date, current, peakcolumns, led_total, full
     """ Balance the LED-intensity based on the correction factors (kappa) calculated by the mean of the internal quantum
     counter. It returns an Data Frame containing the corrected mean values for each LED.
     :param mean:
-    :param kappa:
+    :param kappa_spec:
+    :param date:
     :param current:
     :param peakcolumns:
+    :param led_total:
     :param full_calibration:
     :return: mean_corr
     """
     # Correction of the LED intensities for standardizing the measurement and inter-comparability.
     # Load correction factors for rhodamine 101 12mM in ethylene glycol(internal quantum counter) and multiply the
     # factors with the LED intensity to get the inter-comparability / ist-LED-intensity.
+    # update led_total
+    if isinstance(led_total[0], int) or isinstance(led_total[0], float):
+        led_total = [str(int(i)) + ' nm' if i != 0 else i for i in led_total]
+
     if kappa_spec is None:
         # no specified correction factor. load the factor according to the date of the measurement file.
         if full_calibration is False:
@@ -1096,7 +748,7 @@ def correction_led(mean, kappa_spec, date, current, peakcolumns, led_total, full
             kappa = pd.read_csv(kap, sep='\t', index_col=0)
     else:
         kappa = pd.read_csv(kappa_spec, sep='\t', index_col=0)
-        
+
     corr_factor = kappa.loc[:kappa.index[-2], :].astype(float)
     corr_factor = corr_factor.set_index(corr_factor.index.astype(int))
     mean_corr = mean.copy()
@@ -1114,7 +766,7 @@ def correction_led(mean, kappa_spec, date, current, peakcolumns, led_total, full
             if p in peakcolumns:
                 current_red.append(current[i])
         current = current_red
-        
+
     if current[0] not in corr_factor.index:
         print("WARNING! Correction not processed! No correction factor for {}mA in calibrationfile!".format(current[0]))
         pass
@@ -1139,15 +791,16 @@ def correction_led_table(df, kappa_spec, date, current, peakcolumns, full_calibr
     """ Balance the LED-intensity based on the correction factors (kappa) calculated by the mean of the internal quantum
     counter.
     :param df:
-    :param kappa:
+    :param kappa_spec:
+    :param date:
     :param current:
     :param peakcolumns:
     :param full_calibration:
     :return: mean_corr
     """
-    if kappa_spec is None: # automatically chosen excitation-correction file
+    if kappa_spec is None:  # automatically chosen excitation-correction file
         # no specified correction factor. load the factor according to the date of the measurement file.
-        if full_calibration is False: # linear fit between 30-50mA
+        if full_calibration is False:  # linear fit between 30-50mA
             kappa_ = 'supplementary/calibration/excitation-site/'
             kap = kappa_ + str(date[:-4]) + '_LED_correction_rhodamine101_spectrum.txt'
             if os.path.exists(kap) is True:
@@ -1170,33 +823,29 @@ def correction_led_table(df, kappa_spec, date, current, peakcolumns, full_calibr
     df = pd.DataFrame(df)
 
     if not current:
-        if full_calibration is True:
-            current = [97]*8
-        else:
-            current = [50]*8
+        current = [97]*8 if full_calibration is True else [50]*8
 
     # Correction of the LED intensities for standardizing the measurement and inter-comparability.
     # Load correction factors for rhodamine 101 12mM in ethylene glycol(internal quantum counter) and multiply the
     # factors with the LED intensity to get the inter-comparability / ist-LED-intensity.
     if current[0] not in corr_factor.index:
-        print("WARNING! Correction not processed! No correction factor for {}mA in calibration file!".format(current[0]))
+        print("WARNING! Correction not processed! No correction factor for {}mA in file!".format(current[0]))
         pass
     else:
         # preparation of LED current; default type is list but for manual input it might be just one integer
         if type(current) == float or type(current) == int:
-            current = [int(current)] * 8
-            current = pd.DataFrame(current, index=peakcolumns).T
+            current = pd.DataFrame([int(current)] * 8, index=peakcolumns).T
         elif type(current) == list:
             current = pd.DataFrame(current, index=peakcolumns).T
 
         # multiplication of LED correction factor and LED value
         for k in current.columns:                           # k: LED_wl
-            if k not in corr_factor.columns:
-                print('\n', 'Warning! No correction factor for LED {}'.format(k))
-                df_led_corr[k] = df[k] * 1.0E-3
-            else:
-                df_led_corr[k] = df[k] * corr_factor.loc[current.loc[0, k], k]
-
+            if k in df.columns:
+                if k not in corr_factor.columns:
+                    print('\n', 'Warning! No correction factor for LED {}'.format(k))
+                    df_led_corr[k] = df[k] * 1.0E-3
+                else:
+                    df_led_corr[k] = df[k] * corr_factor.loc[current.loc[0, k], k]
     return df_led_corr
 
 
@@ -1268,13 +917,13 @@ def priority_lda(training_data_list, separation, training_corr):
 
     # get and normalize priority (must sum up to 1 for LDA)
     for t in range(len(dinos_in_group)):
-        groups.loc[dinos_in_group[t], 'emphasis'] =  len(groups) / len(dinos_in_group)
+        groups.loc[dinos_in_group[t], 'emphasis'] = len(groups) / len(dinos_in_group)
     priority = groups['emphasis'].tolist() / sum(groups['emphasis'])
 
     return groups, priority, training_corr
 
 
-def lda_sep(data, classes_dict, priors=None, number_components=3):
+def lda_sep(data, classes_dict, priors=None):
     """ running linear discriminant analysis for a given data set (mean values for different LEDs).
     The analysis bases on the Singular value decomposition (as default). It does not compute the
     covariance matrix, therefore this solver is recommended for data with a large number of features.
@@ -1284,7 +933,7 @@ def lda_sep(data, classes_dict, priors=None, number_components=3):
     """
     # data analysis
     classes = np.array([classes_dict[l] for l in data.index])
-    lda = LinearDiscriminantAnalysis(n_components=8, store_covariance=True, priors=priors, solver='svd')
+    lda = LinearDiscriminantAnalysis(n_components=min(data.shape), store_covariance=True, priors=priors, solver='svd')
 
     # data set for training - fitting and transformation in one step
     lda.fit(data, classes)
@@ -1304,7 +953,7 @@ def lda_analysis(df, training, classes_dict, color_dict, priors=None, number_com
             df_score = pandas.DataFrame of the calculated score values (from LDA) of the sample
     """
     # linear discriminant analysis with training data to calibrate the algorithm; saving scores
-    lda = lda_sep(training, classes_dict, priors=priors, number_components=number_components)
+    lda = lda_sep(training, classes_dict, priors=priors)
 
     # (Coordinates) transformation in (sub)space for enhances class separation
     training_score = lda.transform(training)
@@ -1315,7 +964,7 @@ def lda_analysis(df, training, classes_dict, color_dict, priors=None, number_com
         if number_components <= 2:
             type_ = 2
         ax = lda_plot(training, lda, classes_dict, color_dict, type_=type_)
-        ax = lda_plot(df, lda, classes_dict, color_dict, type_=type_, ax=ax, marker='^')
+        _ = lda_plot(df, lda, classes_dict, color_dict, type_=type_, ax=ax, marker='^')
 
     col_name = []
     for i in np.arange(df_score.size):
@@ -1330,41 +979,42 @@ def lda_process_mean(mean_fluoro, training_corr, unit, classes_dict, colorclass_
     """ Complete analysis by the mean of the linear discriminant analysis of a measured sample. The raw data are
            optionally blank corrected and peaks > LoD (3*std(blank)) are extracted. The signal intensity of the same
            biomass at different LEDs is clustered together.
-           :param:     data:               path to the data file
-                       trainingdata:      path to the training data for the LDA
+           :param:     data:                path to the data file
+                       trainingdata:        path to the training data for the LDA
                        kappa_spec:          correction factors of the device for inter-comparability
-                       kappa_training:     correction factors of the device for inter-comparability. Just for training
+                       kappa_training:      correction factors of the device for inter-comparability. Just for training
                                             data
-                       seperation:         defines the taxonomic level at which the separation should take place
-                       priority:           If yes, the dinophyta is emphasised to be separated. Otherwise all groups have
-                                            the same priority
-                       number_components:  define number of degrees of freedom for LDA separation
-                       pumprate:           definition of the pump speed [ml/min] to define the analysed sample volume
-                       correction:         correction of LED intensity for inter-comparability and correction of differences
-                                           in emission filter properties
-                       blank_corr:         optionally correction of the raw data-file. The training data will be blank
-                                           corrected anyway
-                       blank_std_ex:       give an external calculated deviation of the blank measurement
-                       blank_mean_ex:      give an external calculated mean value of the blank measurement
-                       plot_data:          time-drive plot of the sample. Default is False
-                       plot_score:         resulting score plot for training data and sample data. Default is True
-                       plot_distance:      plots the scores of the sample and the spheres of the algae classes to visualize
-                                           the sample affiliations
-                       type_:              2dim or 3dim plot of the results
-                       normalize:          normalisation of the training and sample data. Same option for both data to
-                                           ensure an equivalent analysis. Default = True
-                       standardize:        standardisation, i.e. centering and auto-scaling of training and sample data
-                                           for the algorithm. Default = True
-                       save:               store the results of the analysis. When individual peaks are analysed only a
-                                           summary (which algal classes could be found + their probability) is exported.
-                                           Standard txt file for english application (sep = '\t', decimal = '.')
+                       seperation:          defines the taxonomic level at which the separation should take place
+                       priority:            If yes, the dinophyta is emphasised to be separated. Otherwise all groups
+                                            have the same priority
+                       number_components:   define number of degrees of freedom for LDA separation
+                       pumprate:            definition of the pump speed [ml/min] to define the analysed sample volume
+                       correction:          correction of LED intensity for inter-comparability and correction of
+                                            differences in emission filter properties
+                       blank_corr:          optionally correction of the raw data-file. The training data will be blank
+                                            corrected anyway
+                       blank_std_ex:        give an external calculated deviation of the blank measurement
+                       blank_mean_ex:       give an external calculated mean value of the blank measurement
+                       plot_data:           time-drive plot of the sample. Default is False
+                       plot_score:          resulting score plot for training data and sample data. Default is True
+                       plot_distance:       plots the scores of the sample and the spheres of the algae classes to
+                                            visualize the sample affiliations
+                       type_:               2dim or 3dim plot of the results
+                       normalize:           normalisation of the training and sample data. Same option for both data to
+                                            ensure an equivalent analysis. Default = True
+                       standardize:         standardisation, i.e. centering and auto-scaling of training and sample data
+                                            for the algorithm. Default = True
+                       save:                store the results of the analysis. When individual peaks are analysed only a
+                                            summary (which algal classes could be found + their probability) is
+                                            exported. Standard txt file for english application (sep = '\t',
+                                            decimal = '.')
            :return:    lda = sklearn.discriminant_analysis.LinearDiscriminantAnalysis
-                       df_score = pd.DataFrame:        resulting score values (from LDA) for the analyzed sample
-                       training_score = pd.DataFrame:  resulting score values (from LDA) for each algal sample in the
-                                                       training matrix
-                       d_ = list/pd.DataFrame:         mean values for each algal class, their spatial distribution and the
-                                                       distance between the sample and each class center
-                       prob = list/pd.DataFrame:       probability of belonging to a certain algal class
+                       df_score = pd.DataFrame:         resulting score values (from LDA) for the analyzed sample
+                       training_score = pd.DataFrame:   resulting score values (from LDA) for each algal sample in the
+                                                        training matrix
+                       d_ = list/pd.DataFrame:          mean values for each algal class, their spatial distribution and
+                                                        the distance between the sample and each class center
+                       prob = list/pd.DataFrame:        probability of belonging to a certain algal class
            """
     # sort LEDs by wavelength
     df = mean_fluoro.sort_index().T
@@ -1386,81 +1036,6 @@ def lda_process_mean(mean_fluoro, training_corr, unit, classes_dict, colorclass_
     return lda, training_score, df_score
 
 
-def lda_process_individual(l, training_corr, LoD, classes_dict, colorclass_dict, volume=None, separation='class',
-                           pumprate=None, normalize=True, standardize=True, priority=False, type_=2):
-    # LDA with detected peaks
-    # calculate time delay to shift the channels. The volume is the sum of the measurement volume and the death
-    # volume between two emission channels [m^3]. The shift is the calculated time difference to shift the columns
-    # from one device-side: volume[L] / pumprate [L/s] = [s]
-    volume_ = (0.5 * 1.94 / 1000) ** 2 * np.pi * 6.9 / 1000
-    shift = volume_ * 1000 / (pumprate / 1000 / 60)
-
-    # concatenate the blank-corrected data to a new DataFrame with the same time line.
-    data0 = l.loc[:, 0:1].dropna()
-    data7 = l.loc[:, 1:2].dropna()
-    data7.index = data0.index
-    data1 = l.loc[:, 2:3].dropna()
-    data1.index = data0.index - 1 * shift
-    data6 = l.loc[:, 3:4].dropna()
-    data6.index = data1.index
-    data2 = l.loc[:, 4:5].dropna()
-    data2.index = data0.index - 2 * shift
-    data5 = l.loc[:, 5:6].dropna()
-    data5.index = data2.index
-    data3 = l.loc[:, 6:7].dropna()
-    data3.index = data0.index - 3 * shift
-    data4 = l.loc[:, 7:8].dropna()
-    data4.index = data3.index
-    ld = [data0, data7, data1, data6, data2, data5, data3, data4]
-    data = pd.concat(ld, axis=1)
-    df_ = pd.DataFrame(data, index=data.index, columns=data.columns)
-
-    # peak detection
-    [c, peak, mean] = counter(df_, LoD=LoD, volume=volume, warn=False)
-
-    # control if there are no peaks detected -> exit. Otherwise go on!
-    if [0] in c.unique():
-        print('no peak detected')
-        sys.exit('No peak detected!')
-
-    # delete rows where all entries are NaN and replace NaN, occurring only on few columns for one row, with LoD for
-    # each columns
-    peak = peak[~np.isnan(peak).all(axis=1)]
-    peak.loc[:, 0:1] = peak.loc[:, 0:1].replace(to_replace=NaN, value=LoD[0])
-    peak.loc[:, 1:2] = peak.loc[:, 1:2].replace(to_replace=NaN, value=LoD[1])
-    peak.loc[:, 2:3] = peak.loc[:, 2:3].replace(to_replace=NaN, value=LoD[2])
-    peak.loc[:, 3:4] = peak.loc[:, 3:4].replace(to_replace=NaN, value=LoD[3])
-    peak.loc[:, 4:5] = peak.loc[:, 4:5].replace(to_replace=NaN, value=LoD[4])
-    peak.loc[:, 5:6] = peak.loc[:, 5:6].replace(to_replace=NaN, value=LoD[5])
-    peak.loc[:, 6:7] = peak.loc[:, 6:7].replace(to_replace=NaN, value=LoD[6])
-    peak.loc[:, 7:8] = peak.loc[:, 7:8].replace(to_replace=NaN, value=LoD[7])
-
-    # preparation of the detected peaks to analyse them individually
-    index = ['sample'] * len(peak)
-    peak.index = index
-
-    # sort wavelength according to their size
-    df = peak.reindex_axis(sorted(peak.columns), axis=1)
-
-    # pre-processing of the data
-    df = pre_process(df, normalize=normalize, standardize=standardize)
-
-    if priority is True:
-        [groups, priors, training_corr] = priority_lda(training_corr.index, separation, training_corr)
-    else:
-        priors = None
-
-    # linear discriminant analysis
-    number_components = len(groups)
-
-    # linear discriminant analysis
-    [lda, training_score,
-     df_score] = lda_analysis(df, training_corr, classes_dict, colorclass_dict, priors=priors,
-                                    number_components=number_components, plot_score=False, type_=type_)
-
-    return lda, training_score, df_score
-
-
 # ---------------------------------------------------------------------------------------------------------------------
 def lda_plot(data, lda, classesdict, colordict, type_=3, ax=None, marker='H'):
     """ Calculates the scores of the sample and plots them together with the training samples.
@@ -1471,7 +1046,6 @@ def lda_plot(data, lda, classesdict, colordict, type_=3, ax=None, marker='H'):
             marker: sample data marked as hexagon2
     return: ax
     """
-
     scores_lda = lda.transform(data)
     ax = plot_scores(scores_lda, data.index, classesdict, colordict, type_=type_, figsize=(14, 8), marker=marker, ax=ax)
 
@@ -1488,7 +1062,6 @@ def plot_scores(data, names, classes_dict, color_dict, type_=3, figsize=None, ax
                 marker:     training data marked as points
      :return:   ax:         plotted axis
     """
-
     # plotting 2D scores
     if type_ == 2:
         if ax is None:
@@ -1531,7 +1104,6 @@ def plot_scores(data, names, classes_dict, color_dict, type_=3, figsize=None, ax
 
     ax.set_xlabel('LDA1', fontsize=20)
     ax.set_ylabel('LDA2', fontsize=20)
-
     return ax
 
 
@@ -1542,7 +1114,6 @@ def reference_scores(lda, training_score, classes_dict):
     :return:    d = pd.DataFrame:   containing the centroid for each algal class, the group variances
                                     in each direction as well as the distance between centroid and sample
     """
-
     # classify all algal samples according to their class affiliation
     group = lda.classes_
     q = []
@@ -1565,7 +1136,6 @@ def reference_scores(lda, training_score, classes_dict):
     for c in d.columns:
         if c[-3:] == 'var':
             d[c][np.isnan(d[c])] = 5E-3
-
     return d
 
 
@@ -1590,7 +1160,6 @@ def sample_distance(d, df_score):
 
     # sort distance
     d_ = d.sort_values(by='distance')
-
     return d_
 
 
@@ -1601,7 +1170,6 @@ def prob_(d):
                         well as the distance between centroid and sample
     :return:    prob:   pd.DataFrame containing the probability that a sample belongs to a certain algal class
     """
-
     # probability if the sample belongs to the algal group
     # calculate gaussian distribution for the sample in each class (prob = exp(-0.5*distance)*100 [%])
     pro, alg = [], []
@@ -1647,7 +1215,7 @@ def output(sample, summary, summary_, path, date, prob, separation='phylum', sav
                                 is exported. English txt file format (sep = '\t', decimal = '.')
     :return: res = pandas.DataFrame of the detected algal classes and the corresponding probability
     """
-    [prob_red, prob_red_gauss, group_prob] = taxonomic_level_reduction(prob, separation=separation, likelyhood=True)
+    [prob_red, prob_red_gauss] = taxonomic_level_reduction(prob, separation=separation, likelyhood=True)
 
     prob_phylum = pd.concat([pd.DataFrame(prob_red), pd.DataFrame(prob_red_gauss)], axis=1)
     prob_phylum.columns = ['identified phylum', 'gaussian probability [%]']
@@ -1670,19 +1238,14 @@ def output(sample, summary, summary_, path, date, prob, separation='phylum', sav
     res1 = res.append(pd.DataFrame(['----', '----', '----'], index=res.columns).T)
     res1 = res1.append(pd.DataFrame(['overall security [%] for class', prob[0].index[0], overall], index=res.columns).T)
 
-    # prepare the reduced output file
-    res_red = pd.DataFrame(prob_phylum, columns=['identified phylum', 'probability [%]'])
-
     if save is True:
         newfolder = path + '/' + 'results_LDA'
-        print('save True', newfolder)
         # check if results-folder already exists. if not, create one
         if not os.path.exists(newfolder):
             os.makedirs(newfolder)
 
         # save file to the same directory as the raw data file
-        result_LDA = newfolder + '/' + date + '_'  + '_result_LDA_peak.txt'
-
+        result_LDA = newfolder + '/' + date + '_' + '_result_LDA_peak.txt'
         result_phylum = newfolder + '/' + date + '_' + '_result_LDA_superordinate.txt'
 
         res1.to_csv(result_LDA, sep='\t', index=False)
@@ -1691,226 +1254,22 @@ def output(sample, summary, summary_, path, date, prob, separation='phylum', sav
     return res, prob_phylum
 
 
-def plot_distribution_2d(d, df_score, color, alg_group, alg_phylum, phyl_group, separation, date, filename, path, info,
-                         ax=None, f=None, save_fig=True, format='pdf', dpi=600):
-
-    if ax is None:
-        f, ax = plt.subplots()
-
-    # plotting the centers of each algal class
-    for el in d.index:
-        ax.scatter(d.loc[el, 0], d.loc[el, 1], facecolor=color[el], edgecolor='k', s=60)
-
-    # calculate the standard deviation within one class to built up a solid (sphere with 3 different radii)
-    # around the centroid using spherical coordinates
-    for i in d.index:
-        # replace sample name (phyl_group.index) with phylum name (in phyl_group['phylum_label'])
-        phyl = alg_group[alg_group[separation] == i]['phylum'].values[0]
-        if phyl in phyl_group['phylum_label'].values:
-            pass
-        else:
-            phyl_group.loc[i, 'phylum_label'] = phyl
-            phyl_group.loc[i, 'color'] = alg_phylum.loc[phyl, :].values
-
-        rx = np.sqrt(d['LDA1var'].loc[i])
-        ry = np.sqrt(d['LDA2var'].loc[i])
-        c_x = d.loc[i]['LDA1']
-        c_y = d.loc[i]['LDA2']
-        ells = Ellipse(xy=[c_x, c_y], width=rx, height=ry, angle=0, edgecolor=color[i], lw=1, facecolor=color[i],
-                       alpha=0.6, label=i)
-        ax.add_artist(ells)
-
-        ells2 = Ellipse(xy=[c_x, c_y], width=2 * rx, height=2 * ry, angle=0, edgecolor=color[i], lw=1,
-                        facecolor=color[i], alpha=0.4)
-        ax.add_artist(ells2)
-
-        ells3 = Ellipse(xy=[c_x, c_y], width=3 * rx, height=3 * ry, angle=0, edgecolor=color[i], lw=0.5,
-                        facecolor=color[i], alpha=0.1)
-        ax.add_artist(ells3)
-
-    patch = []
-    for i in phyl_group.index:
-        patch.append(mpatches.Patch(color=phyl_group.loc[i, 'color'][0], label=phyl_group.loc[i, 'phylum_label']))
-        ax.legend(handles=patch, loc="upper center", bbox_to_anchor=(1.2, 0.9), frameon=True, fontsize=11)
-
-    plt.setp(ax.get_xticklabels(), fontsize=13)
-    plt.setp(ax.get_yticklabels(), fontsize=13)
-    ax.set_xlabel('LDA1', fontsize=13, labelpad=5)
-    ax.set_ylabel('LDA2', fontsize=13, labelpad=5)
-    plt.title('')
-
-    # plotting the sample scores
-    for i in range(len(df_score.T)):
-        ax.plot(df_score.loc[0, 0], df_score.loc[1, 0], marker='^', markersize=14, color='orangered', label='')
-    f.subplots_adjust(left=0.1, right=0.75, bottom=0.18, top=0.85)
-
-    if save_fig is True:
-        fig_name = path + '/' + date + '_' + filename + '_' + info + 'LDA_scoreplot_2d' + '.' + format
-        f.savefig(fig_name, dpi=dpi)
-
-    return
-
-
-def plot_distribution_3d(d, df_score, alg_group, alg_phylum, phyl_group, color, separation, date, info, filename, path,
-                         ax=None, f=None, save_fig=True, format='pdf', dpi=600):
-
-    if ax is None:
-        f = plt.figure(figsize=(13, 5))
-        ax = f.gca(projection='3d')
-
-    # plotting the centers of each algal class
-    for el in d.index:
-        ax.scatter(d.loc[el, 0], d.loc[el, 1], d.loc[el, 2], marker='.', color='k', s=60)
-
-    # calculate the standard deviation within one class to built up a solid (sphere with 3 different radii)
-    # around the centroid using spherical coordinates
-    for i in d.index:
-        # replace sample name (phyl_group.index) with phylum name (in phyl_group['phylum_label'])
-        phyl = alg_group[alg_group[separation] == i]['phylum'].values[0]
-
-        if phyl in phyl_group['phylum_label'].values:
-            pass
-        else:
-            phyl_group.loc[i, 'phylum_label'] = phyl
-            phyl_group.loc[i, 'color'] = alg_phylum.loc[phyl, :].values
-
-        rx = np.sqrt(d['LDA1var'].loc[i])
-        ry = np.sqrt(d['LDA2var'].loc[i])
-        rz = np.sqrt(d['LDA3var'].loc[i])
-        c_x = d.loc[i]['LDA1']
-        c_y = d.loc[i]['LDA2']
-        c_z = d.loc[i]['LDA3']
-
-        u, v = np.mgrid[0:2 * np.pi:10j, 0:np.pi:20j]
-        x = rx * np.cos(u) * np.sin(v) + c_x
-        y = ry * np.sin(u) * np.sin(v) + c_y
-        z = rz * np.cos(v) + c_z
-        ax.plot_wireframe(x, y, z, linewidth=1, color=color[i], alpha=0.5)#, linewidth=1, label=phyl)
-
-        x1 = 2 * rx * np.cos(u) * np.sin(v) + c_x
-        y1 = 2 * ry * np.sin(u) * np.sin(v) + c_y
-        z1 = 2 * rz * np.cos(v) + c_z
-        ax.plot_wireframe(x1, y1, z1, color=color[i], alpha=0.2, linewidth=1)
-
-        x2 = 3 * rx * np.cos(u) * np.sin(v) + c_x
-        y2 = 3 * ry * np.sin(u) * np.sin(v) + c_y
-        z2 = 3 * rz * np.cos(v) + c_z
-        ax.plot_wireframe(x2, y2, z2, color=color[i], alpha=0.15, linewidth=0.5)
-
-    patch = []
-    for i in phyl_group.index:
-        patch.append(mpatches.Patch(color=phyl_group.loc[i, 'color'][0], label=phyl_group.loc[i, 'phylum_label']))
-        ax.legend(handles=patch, loc="upper center", bbox_to_anchor=(0., 0.9), frameon=True, fancybox=True,
-                  fontsize=10)
-
-    plt.setp(ax.get_xticklabels(), fontsize=13)
-    plt.setp(ax.get_yticklabels(), fontsize=13)
-    plt.setp(ax.get_zticklabels(), fontsize=13)
-
-    ax.set_xlabel('LDA1', fontsize=14, labelpad=10)
-    ax.set_ylabel('LDA2', fontsize=14, labelpad=10)
-    ax.set_zlabel('LDA3', fontsize=14, labelpad=10)
-    plt.title(' ')
-
-    minorLocator = MultipleLocator(1)
-    majorLocator = MultipleLocator(2)
-
-    ax.xaxis.set_minor_locator(minorLocator)
-    ax.xaxis.set_major_locator(majorLocator)
-    ax.yaxis.set_minor_locator(minorLocator)
-    ax.yaxis.set_major_locator(majorLocator)
-    ax.zaxis.set_minor_locator(minorLocator)
-    ax.zaxis.set_major_locator(majorLocator)
-
-    # plotting the sample scores
-    for i in range(len(df_score)):
-        sample = df_score.T.columns[i]
-        ax.scatter(df_score.loc[sample, 'LDA1'], df_score.loc[sample, 'LDA2'], df_score.loc[sample, 'LDA3'],
-                   marker='^', s=250, color='orangered', label='')
-
-    f.subplots_adjust(left=0.10, right=0.95, bottom=0.06, top=0.99)
-
-    if save_fig is True:
-        fig_name = path + '/' + date + '_' + filename + '_' + info + 'LDA_scoreplot_3d' + '.' + format
-        f.savefig(fig_name, dpi=dpi)
-
-    return
-
-
-def plot_histogram(filename, mean, date, info, path=None, save_name=None, save_fig=False, format='pdf'):
-    """
-
-    :param filename:
-    :param mean:
-    :param unit:
-    :param date:
-    :param path:
-    :param save_fig:
-    :param format:
-    :return:
-    """
-
-    mean = mean.sort_index()
-
-    # prepare general information about the sample and the setup
-    sample_name = filename
-    LED_color = []
-    for i in mean.index:
-        LED_color.append(led_color_dict[i])
-
-    means = mean / mean.max()
-
-    for i in means.index:
-        if (means.loc[i, :].values[0]) < 0:
-            means.loc[i, :].values[0] = 0
-
-    f, ax = plt.subplots(figsize=(7.5, 5))  # figsize refers to width and height figsize=(16, 9)
-    for k, l in enumerate(mean.index):
-        ax.bar(k, means.loc[l, :], width=0.9, color=LED_color[k])
-    ax = plt.gca()
-    ax.set_xticks([0., 1., 2., 3., 4., 5., 6., 7.])
-    ax.set_xticklabels(mean.index, fontsize=15)
-    plt.yticks(fontsize=15)
-
-    ax.yaxis.set_ticks_position('both')
-    plt.xlabel('Wavelength [nm]', fontsize=18)
-    plt.ylabel('Relative signal intensity [rfu]', fontsize=18)
-    plt.title('Relative pigment pattern of the {} algae'.format(sample_name), y=1.08, fontsize=18)
-
-    plt.tight_layout()
-
-    if save_fig is True:
-        f_name = path + '/' + date + '_histogram_' + save_name + '_' + info + 'min.' + str(format)
-        f.savefig(f_name, dpi=300)
-
-    return f
-
-
 def linear_discriminant_save(res, prob_phylum, info, date, name, path, blank_corr, correction, peak_detection=True,
                              additional=False):
     # define folder and name of result-file
     newfolder = path + '/' + 'results_LDA'
     if blank_corr is True:
         newfolder += '_blank'
-    else:
-        pass
     if correction is True:
         newfolder += '_correction'
-    else:
-        pass
     if additional is True:
         newfolder += '_addcomp'
-    else:
-        pass
     if peak_detection is True:
         newfolder += '_peak'
-    else:
-        pass
 
     # check if results-folder already exists. if not, create one
     if not os.path.exists(newfolder):
         os.makedirs(newfolder)
-
 
     # save file to the same directory as the raw data file
     result = newfolder + '/' + date + '_' + name + '_' + info + '_result_LDA.txt'
@@ -1931,330 +1290,3 @@ def linear_discriminant_save(res, prob_phylum, info, date, name, path, blank_cor
     res_save.to_csv(result, sep='\t', index=False, header=False)
 
     return res_save
-
-
-def linear_discriminant_save_all(res, prob_phylum, d, df_score, mean, info, date, name, alg_group, alg_phylum,
-                                 phyl_group, color, blank_corr, correction, peak_detection, separation, path, 
-                                 additional=False, format='pdf', dpi=600, type_=3):
-
-    res_save = linear_discriminant_save(res=res, prob_phylum=prob_phylum, info=info, date=date, name=name, path=path,
-                                        blank_corr=blank_corr, correction=correction, additional=additional,
-                                        peak_detection=peak_detection)
-
-    # define folder and name of figures
-    newfolder = path + '/' + 'LDA_figures'
-    fig_name = name
-    if blank_corr is True:
-        fig_name += '_blankcorr'
-    else:
-        pass
-    if correction is True:
-        fig_name += '_correction'
-    else:
-        pass
-    if additional is True:
-        fig_name += '_addcomp'
-    else:
-        pass
-    if peak_detection is True:
-        fig_name += '_peak'
-    else:
-        pass
-
-    # check if results-folder already exists. if not, create one
-    if not os.path.exists(newfolder):
-        os.makedirs(newfolder)
-
-
-    plt.ioff()
-    # score plot
-    if type_ == 2:
-        plot_distribution_2d(d=d, df_score=df_score, color=color, alg_group=alg_group, alg_phylum=alg_phylum,
-                             phyl_group=phyl_group, separation=separation, date=date, filename=name, path=newfolder,
-                             info=info, ax=None, f=None, save_fig=True, format=format, dpi=dpi)
-
-    elif type_ == 3:
-        plot_distribution_3d(d=d, df_score=df_score, alg_group=alg_group, alg_phylum=alg_phylum, phyl_group=phyl_group,
-                             color=color, separation=separation, date=date, info=info, filename=name, path=newfolder,
-                             ax=None, f=None, save_fig=True, format=format, dpi=dpi)
-
-    # create histogram if not pre-scanned data used
-    plot_histogram(filename=name, mean=mean, date=date, info=info, save_name=fig_name, path=newfolder, save_fig=True)
-    plt.close()
-
-    return res_save
-
-
-# ---------------------------------------------------------------------------------------------------------------------
-def construction_training_database(data, trainingsdata, xcoords, device=1, device_training=0., kappa_spec=None,
-                                   separation='class', priority=False, pumprate=None, MAZeT=None, correction=True,
-                                   additional=False, peak_detection=True, current_training=None, blank_corr=True,
-                                   blank_mean_ex=None, blank_std_ex=None, limit=None, plot_raw=False,
-                                   plot_distance=True, type_=2, full_calibration=True, normalize=True,
-                                   additional_training=False, standardize=True, save=False, save_fig=False):
-    """ Complete analysis by the mean of the linear discriminant analysis of a measured sample. The raw data are
-    optionally blank corrected and peaks > LoD (3*std(blank)) are extracted. The signal intensity of the same
-    biomass at different LEDs is clustered together.
-    :param:     data:               path to the data file
-                trainingsdata:      path to the trainings data for the LDA
-                kappa_spec:          correction factors of the device for inter-comparability
-                kappa_training:     correction factors of the device for inter-comparability. Just for trainings data
-                seperation:         defines the taxonomic level at which the separation should take place
-                priority:           If yes, the dinophyta is emphasised to be separated. Otherwise all groups have the
-                                    same priority
-                number_components:  define number of degrees of freedom for LDA separation
-                pumprate:           definition of the pump speed [ml/min] to define the analysed sample volume
-                correction:         correction of LED intensity for inter-comparability and correction of differences
-                                    in emission filter properties
-                blank_corr:         optionally correction of the raw data-file. The trainings data will be blank
-                                    corrected anyway
-                blank_std_ex:       give an external calculated deviation of the blank measurement
-                blank_mean_ex:      give an external calculated mean value of the blank measurement
-                plot_data:          time-drive plot of the sample. Default is False
-                plot_score:         resulting score plot for trainings data and sample data. Default is True
-                plot_distance:      plots the scores of the sample and the spheres of the algae classes to visualize
-                                    the sample affiliations
-                type_:              2dim or 3dim plot of the results
-                normalize:          normalisation of the trainings and sample data. Same option for both data to
-                                    ensure an equivalent analysis. Default = True
-                standardize:        standardisation, i.e. centering and auto-scaling of trainings and sample data
-                                    for the algorithm. Default = True
-                save:               store the results of the analysis. When individual peaks are analysed only a
-                                    summary (which algal classes could be found + their probability) is exported.
-                                    Standard txt file for english application (sep = '\t', decimal = '.')
-    :return:    lda = sklearn.discriminant_analysis.LinearDiscriminantAnalysis
-                df_score = pd.DataFrame:        resulting score values (from LDA) for the analyzed sample
-                training_score = pd.DataFrame:  resulting score values (from LDA) for each algal sample in the
-                                                training matrix
-                d_ = list/pd.DataFrame:         mean values for each algal class, their spatial distribution and the
-                                                distance between the sample and each class center
-                prob = list/pd.DataFrame:       probability of belonging to a certain algal class
-    """
-
-# ------------------------------------------------------------------------------------
-    # Load data and prepare analysis
-    t0 = time()
-
-    # load the raw data of one! measurement file for the LDA
-    [l, header, unit] = read_rawdata(filename=data, additional=additional, co=None, blank_corr=blank_corr,
-                                     blank_mean_ex=blank_mean_ex, blank_std_ex=blank_std_ex, plot_raw=plot_raw)
-
-    print('separation level: ', 'algal', separation)
-
-    # general information about file. If one use an externally calculated blank, the values are transferred here!
-    path = os.path.dirname(data)
-    [dd, name, date, current, blank_mean, blank_std, unit_blank, LED_wl, LEDs, MAZeT,
-     pumprate] = info_about_file_extend(data, header, blank_mean_ex=blank_mean_ex, blank_std_ex=blank_std_ex,
-                                              pumprate=pumprate, MAZeT=MAZeT)
-
-    # return the pump rate in mL/min
-    print('Pump rate for this measurement: {:.2f} mL/min'.format(pumprate), '\n')
-
-    # defining measurement time and volume based on pump speed
-    t = l.index[-1] / 60  # time in minutes
-    volume = round(pumprate * t, 2)  # volume in mL
-
-    # information for trainings data. Which separation level is chosen?
-    [classes_dict, color_dict, colorclass_dict, genus_names] = separation_level(separation)
-# ----------------------------------------------------------------------------------------------------
-
-    # Balance device and correct measurement data
-    # sort LEDs by emission filter RG665 or RG9 for the sample as well as for the trainings data
-    [RG9_sample, RG665_sample] = LED_Filter(l.columns)
-
-    # load trainings data from a folder
-    [training, training_current, RG9_training, RG665_training,
-     training_date] = read_directory(trainingsdata, volume, kappa_spec=None, device=device_training,
-                                           additional=additional_training, blank_corr=blank_corr, blank_mean_ex=None,
-                                           blank_std_ex=None, normalize=False, standardize=False)
-
-    # define LoD (depending whether the data are blank corrected or not) and sample peaks (= data > LoD)
-    # count the number of detected peaks(c), extract the peak values(peak), calculate mean values for the LEDs(mean)
-    LoD = detection(header=header, rg665=RG665_sample, rg9=RG9_sample, kappa_spec=kappa_spec,
-                          date=date, current=current, full_calibration=full_calibration, blank_corr=blank_corr,
-                          blank_mean=blank_mean, blank_std=blank_std, correction=correction, device=int(device))
-
-    if peak_detection is True:
-        # peak detection (Int. > LoD (peak)) and count number of peaks (c) as well as the mean value of the peaks (mean)
-        [c, peak, mean_raw] = counter(l, volume=volume, LoD=LoD.values[0], xcoords=xcoords, division=None,
-                                            warn=False)
-    else:
-        mean_raw = l.copy()
-        mean_raw = mean_raw.mean()
-        c = mean_raw.copy()
-        for r in c.index:
-            c[r] = '--'
-        peak = l.copy()
-
-    mean = pd.DataFrame(mean_raw, columns=['sample'])
-
-    if correction is True:
-        # Balance different transmission properties of the emission filters
-        mean_balanced = emission_correction(mean, device, RG9_sample, RG665_sample)
-        training_balanced = emission_correction(training.T, device, RG9_training, RG665_training).T
-        print('2103')
-        # Correction of the LED intensities for standardizing the measurement and inter-comparability. Load correction
-        # factors for rhodamine 101 12mM in ethylene glycol(internal quantum counter) and multiply the factors with the
-        # LED intensity to get the inter-comparability / ist-LED-intensity. LED correction for the sample
-        mean_corr = correction_led(mean_balanced, kappa_spec, date, current, peak.columns,
-                                         full_calibration=full_calibration)
-        mean_corr = mean_corr.sort_index(axis=0)
-        # LED correction for trainings matrix individually in order to get rid of sample-names as index in order to
-        # deal with multiple sample measurements
-        training_trans = training_balanced.set_index(np.arange(len(training_balanced.index)))
-        trans_current = training_current.set_index(np.arange(len(training_current.index)))
-        # correct each trainings sample individually and append corrected sample to the trainings matrix
-        [a, b] = training_balanced.shape
-        training_corr1 = pd.DataFrame(zeros((a, b)), columns=training_balanced.columns)
-
-        for s in range(len(training_balanced.index)):
-            cur_training = trans_current.loc[s, :].values.tolist()
-            mean_tra = pd.DataFrame(training_trans.T[s])
-            training_corr_trans = correction_led(mean_tra, kappa_spec, training_date.loc[s, :].values[0],
-                                                       cur_training, training_current.columns,
-                                                       full_calibration=full_calibration).T
-            training_corr1.T[s] = training_corr_trans.T
-        training_corr_sort = training_corr1.sort_index(axis=1)
-        training_corr_sort.index = training_balanced.index
-    else:
-        mean_corr = mean.sort_index(axis=0)
-        training_corr_sort = training.sort_index(axis=1)
-# ------------------------------------------------------------------------------------
-
-    # calculate average fluorescence intensity at different excitation wavelengths
-    # pigment pattern just with normalised, but not with standardised sample data
-    pigment_pattern = mean_corr.copy()
-    pigment_pattern = pre_process(pigment_pattern, normalize=True, standardize=False)
-    pigment_pattern.columns = ['mean value [pW]']
-
-    # pre-processing of the sample data at the same level as for the trainings matrix
-    mean_corr = pre_process(mean_corr, normalize=normalize, standardize=standardize)
-    mean_corr = pd.DataFrame(mean_corr, columns=['sample'])
-    training_corr_ = pre_process(training_corr_sort.T, normalize=normalize, standardize=standardize).T
-    training_corr = pd.DataFrame(training_corr_)
-# ------------------------------------------------------------------------------------
-
-    # LDA with all data-points
-    # If there's one LED where the cell density is too high -> LDA with mean values
-    if ['--'] in c.unique():
-        print('\n', 'We will do the analysis with mean values ...', '\n')
-
-        # sort LEDs by wavelength
-        df = mean_corr.sort_index().T
-
-        # adaption for the output
-        mean_corr.columns = [unit]
-
-        if separation == 'phylum' or separation == 'class':
-            priority = False
-
-        if priority is True:
-            [groups, priors] = priority_lda(training_corr.index, separation)
-            number_components = len(groups)
-        else:
-            priors = None
-            number_components = 8
-
-        # linear discriminant analysis
-        [lda, training_score,
-         df_score] = lda_analysis(df, training_corr, classes_dict, colorclass_dict, priors=priors,
-                                        number_components=number_components, plot_score=False, type_=type_)
-
-        if number_components <= 2:
-            type_ = 2
-        # prediction of class affiliation and combination with gaussian 3D distribution
-        #[d_, prob, prob_v2, sample, sample_plot, summary, summary_, sample_2, sample_plot_2, summary_2,
-        # summary_2_, ax] = data_analysis(df_score, training_score, lda, name, path, colorclass_dict, date,
-        #                                       classes_dict, separation=separation, limit=limit,
-        #                                       plot_distance=plot_distance, type_=type_, save_fig=save_fig)
-
-    # ------------------------------------------------------------------------------------
-    # LDA with detected peaks
-    else:
-        print('\n', 'We will do the analysis with individual peaks ...', '\n')
-
-        # calculate time delay to shift the channels. The volume is the sum of the measurement volume and the death
-        # volume between two emission channels [m^3]. The shift is the calculated time difference to shift the columns
-        # from one device-side: volume[L] / pumprate [L/s] = [s]
-        volume_ = (0.5 * 1.94/1000)**2 * np.pi * 6.9 / 1000
-        shift = volume_ * 1000 / (pumprate / 1000 / 60)
-
-        # concatenate the blank-corrected data to a new DataFrame with the same time line.
-        data0 = l.loc[:, 0:1].dropna()
-        data7 = l.loc[:, 1:2].dropna()
-        data7.index = data0.index
-        data1 = l.loc[:, 2:3].dropna()
-        data1.index = data0.index - 1 * shift
-        data6 = l.loc[:, 3:4].dropna()
-        data6.index = data1.index
-        data2 = l.loc[:, 4:5].dropna()
-        data2.index = data0.index - 2 * shift
-        data5 = l.loc[:, 5:6].dropna()
-        data5.index = data2.index
-        data3 = l.loc[:, 6:7].dropna()
-        data3.index = data0.index - 3 * shift
-        data4 = l.loc[:, 7:8].dropna()
-        data4.index = data3.index
-        ld = [data0, data7, data1, data6, data2, data5, data3, data4]
-        data = pd.concat(ld, axis=1)
-        df_ = pd.DataFrame(data, index=data.index, columns=data.columns)
-
-        # peak detection
-        [c, peak, mean] = counter(df_, LoD=LoD, volume=volume, warn=False)
-
-        # control if there are no peaks detected -> exit. Otherwise go on!
-        if [0] in c.unique():
-            sys.exit('No peak detected!')
-
-        # delete rows where all entries are NaN and replace NaN, occurring only on few columns for one row, with LoD for
-        # each columns
-        peak = peak[~np.isnan(peak).all(axis=1)]
-        peak.loc[:, 0:1] = peak.loc[:, 0:1].replace(to_replace=NaN, value=LoD[0])
-        peak.loc[:, 1:2] = peak.loc[:, 1:2].replace(to_replace=NaN, value=LoD[1])
-        peak.loc[:, 2:3] = peak.loc[:, 2:3].replace(to_replace=NaN, value=LoD[2])
-        peak.loc[:, 3:4] = peak.loc[:, 3:4].replace(to_replace=NaN, value=LoD[3])
-        peak.loc[:, 4:5] = peak.loc[:, 4:5].replace(to_replace=NaN, value=LoD[4])
-        peak.loc[:, 5:6] = peak.loc[:, 5:6].replace(to_replace=NaN, value=LoD[5])
-        peak.loc[:, 6:7] = peak.loc[:, 6:7].replace(to_replace=NaN, value=LoD[6])
-        peak.loc[:, 7:8] = peak.loc[:, 7:8].replace(to_replace=NaN, value=LoD[7])
-
-        # preparation of the detected peaks to analyse them individually
-        index = ['sample'] * len(peak)
-        peak.index = index
-
-        # sort wavelength according to their size
-        df = peak.reindex_axis(sorted(peak.columns), axis=1)
-
-        # pre-processing of the data
-        df = pre_process(df, normalize=normalize, standardize=standardize)
-
-        if priority is True:
-            [groups, priors] = priority_lda(training_corr.index, separation)
-        else:
-            priors = None
-
-        # linear discriminant analysis
-        number_components = len(groups)
-
-        # linear discriminant analysis
-        [lda, training_score,
-         df_score] = lda_analysis(df, training_corr, classes_dict, colorclass_dict, priors=priors,
-                                        number_components=number_components, plot_score=False, type_=type_)
-
-        # prediction of class affiliation and combination with gaussian 3D distribution
-        #[d_, prob, prob_v2, sample, sample_plot, summary, summary_, sample_2, sample_plot_2, summary_2,
-        #summary_2_, ax] = data_analysis(df_score, training_score, lda, name, path, colorclass_dict, date,
-        #                                      classes_dict, separation=separation, limit=limit,
-        #                                      plot_distance=plot_distance, type_=type_, save_fig=save_fig)
-
-    # ------------------------------------------------------------------------------------
-    # Output of results (probability of the belonging to one algal group)
-    # output
-    #[res, prob_phylum] = output(sample, sample_plot, summary, summary_, path, date, name, prob,
-    #                                  separation=separation, save=save)
-
-    #t1 = time() - t0
-    #print('\n', "analysis done in %0.3fs" % t1, '\n')
-
-    return lda, df_score, training, training_score, peak, mean_corr, c, l, pigment_pattern#, res, prob_phylum
-

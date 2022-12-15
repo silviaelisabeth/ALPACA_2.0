@@ -3,18 +3,17 @@ __project__ = 'SCHeMA_GUI_LDA'
 
 import matplotlib
 matplotlib.use('Qt5Agg')
-import sys
 import matplotlib.pyplot as plt
 from PyQt5 import QtCore, QtWidgets
 from PyQt5 import QtGui
-from PyQt5.QtWidgets import (QApplication, QFrame, QWidget, QVBoxLayout, QHBoxLayout, QMainWindow, QPushButton,
-                             QFileDialog, QAction, qApp, QGridLayout, QLabel, QLineEdit, QCheckBox, QTextEdit,
-                             QGroupBox, QMessageBox, QTableWidget, QTableWidgetItem)
+from PyQt5.QtWidgets import (QApplication, QFrame, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QFileDialog,
+                             QGridLayout, QLabel, QLineEdit, QCheckBox, QTextEdit, QGroupBox, QMessageBox,
+                             QTableWidget, QTableWidgetItem)
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
 from PyQt5.QtCore import *
-from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT, FigureCanvasQTAgg
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
 from matplotlib.patches import Ellipse
 import matplotlib.patches as mpatches
 import seaborn as sns
@@ -31,11 +30,12 @@ sns.set_style('ticks', {"xtick.direction": "in", "ytick.direction": "in"})
 
 
 # global layout parameters
-fs, fs_font, fs_grp = 5, 11, 10        # font size in plot figures | buttons and text | group labels
+fs, fs_font, fs_grp = 5, 11, 10                    # font size in plot figures | buttons and text | group labels
 font_button, font_bod = 'Helvetica Neue', 'Arimo'
 led_color_dict = {"380 nm": '#610061', "403 nm": '#8300BC', "438 nm": '#0A00FF', "453 nm": '#0057FF',
                   "472 nm": '#00AEFF', "526 nm": '#00FF17', "544 nm": '#8CFF00', "593 nm": '#FFD500',
                   "640 nm": '#FF2100'}
+color_sample = '#FFD700'                          # color of sample in score plot
 
 # global parameters
 led_selected = ['526', '438', '593', '453', '380', '472', '403', '640']
@@ -309,7 +309,7 @@ class IntroPage(QWizardPage):
         try:
             self.fname_em.setText(fname_em)
             self.em_file = fname_em.split('/')[-1].split('.')[0].split('_')
-            self.number_em = self.em_file[2]
+            self.number_em = self.em_file[1]
         except:
             correction_em_load_failed = QMessageBox()
             correction_em_load_failed.setIcon(QMessageBox.Information)
@@ -498,22 +498,30 @@ class SamplePage(QWizardPage):
 
     def led2list(self):
         ls_led = list()
-        if self.LED526_checkbox.isChecked() is True:
-            ls_led.append('526')
-        if self.LED438_checkbox.isChecked() is True:
-            ls_led.append('438')
-        if self.LED593_checkbox.isChecked() is True:
-            ls_led.append('593')
-        if self.LED453_checkbox.isChecked() is True:
-            ls_led.append('453')
-        if self.LED380_checkbox.isChecked() is True:
-            ls_led.append('380')
-        if self.LED472_checkbox.isChecked() is True:
-            ls_led.append('472')
-        if self.LED403_checkbox.isChecked() is True:
-            ls_led.append('403')
-        if self.LED640_checkbox.isChecked() is True:
-            ls_led.append('640')
+        ls_led.append('526') if self.LED526_checkbox.isChecked() is True else ls_led.append('')
+        ls_led.append('438') if self.LED438_checkbox.isChecked() is True else ls_led.append('')
+        ls_led.append('593') if self.LED593_checkbox.isChecked() is True else ls_led.append('')
+        ls_led.append('453') if self.LED453_checkbox.isChecked() is True else ls_led.append('')
+        ls_led.append('380') if self.LED380_checkbox.isChecked() is True else ls_led.append('')
+        ls_led.append('472') if self.LED472_checkbox.isChecked() is True else ls_led.append('')
+        ls_led.append('403') if self.LED403_checkbox.isChecked() is True else ls_led.append('')
+        ls_led.append('640') if self.LED640_checkbox.isChecked() is True else ls_led.append('')
+        # if self.LED526_checkbox.isChecked() is True:
+        #     ls_led.append('526')
+        # if self.LED438_checkbox.isChecked() is True:
+        #     ls_led.append('438')
+        # if self.LED593_checkbox.isChecked() is True:
+        #     ls_led.append('593')
+        # if self.LED453_checkbox.isChecked() is True:
+        #     ls_led.append('453')
+        # if self.LED380_checkbox.isChecked() is True:
+        #     ls_led.append('380')
+        # if self.LED472_checkbox.isChecked() is True:
+        #     ls_led.append('472')
+        # if self.LED403_checkbox.isChecked() is True:
+        #     ls_led.append('403')
+        # if self.LED640_checkbox.isChecked() is True:
+        #     ls_led.append('640')
         self.led_selected.setText(','.join(ls_led))
 
     def TimeDrive(self):
@@ -527,9 +535,10 @@ class SamplePage(QWizardPage):
         # Load data and correct them
         [l, l_corr, header, firstline, current, date, sample_name, blank_mean, blank_std, blank_corrected,
          rg9_sample, rg665_sample, volume, pumprate, unit, unit_corr, unit_bl,
-         path] = algae.prescan_load_file(filename=self.field("Data"), kappa_spec=kappa_spec, pumprate=pumprate,
-                                         correction=correction, blank_corr=blank_corr, blank_std_ex=blank_std_ex,
-                                         full_calibration=full_calibration, blank_mean_ex=blank_mean_ex, device=device)
+         path] = algae.prescan_load_file(filename=self.field("Data"), file_em=self.field('em calibration'),
+                                         kappa_spec=kappa_spec, pumprate=pumprate, correction=correction, device=device,
+                                         blank_corr=blank_corr, blank_std_ex=blank_std_ex, blank_mean_ex=blank_mean_ex,
+                                         full_calibration=full_calibration)
 
         l_red = pd.DataFrame(np.zeros(shape=(len(l.index), 0)), index=l.index)
         l_corr_red = pd.DataFrame(np.zeros(shape=(len(l_corr.index), 0)), index=l_corr.index)
@@ -552,11 +561,11 @@ class SamplePage(QWizardPage):
         # collect relevant parameter to transfer between pages
         global loaded_data, ls_xcoords
         loaded_data = {'l': l_red, 'l_corr': l_corr_red, 'header': header, 'firstline': firstline, 'path': path,
-                            'current': current, 'volume': volume, 'name': sample_name, 'date': date, 'unit': unit_corr,
-                            'blank_mean': blank_mean, 'blank_std': blank_std, 'unit_blank': unit_bl,
-                            'blank_corr': blank_corr, 'pumprate': pumprate, 'correction': correction,
-                            'rg9_sample': rg9_sample, 'rg665_sample': rg665_sample, 'full_calibration': full_calibration,
-                            'device': device, 'kappa_spec': kappa_spec, 'sep': self.separation_edit.text()}
+                       'current': current, 'volume': volume, 'name': sample_name, 'date': date, 'unit': unit_corr,
+                       'blank_mean': blank_mean, 'blank_std': blank_std, 'unit_blank': unit_bl, 'device': device,
+                       'blank_corr': blank_corr, 'correction': correction, 'kappa_spec': kappa_spec,
+                       'rg9_sample': rg9_sample, 'rg665_sample': rg665_sample, 'full_calibration': full_calibration,
+                       'pumprate': pumprate, 'sep': self.separation_edit.text()}
 
     def para_prep(self):
         # pump rate
@@ -573,7 +582,6 @@ class SamplePage(QWizardPage):
             # device
             fname_ex = self.field('ex calibration').split('/')[-1]
             device = fname_ex.split('_')[-2][-1]
-            #!!!TODO: double check whether em-calibration has the same device number and whether both exist
             device_em = self.field('em calibration').split('/')[-1].split('-')[-1].split('.')[0]
             if device != device_em:
                 print('WARNING ex/em calibration are not selected for the same device. Choose ex-device')
@@ -592,8 +600,7 @@ class SamplePage(QWizardPage):
             if self.field('Blank'):
                 # blank is not (ex- or em-)corrected so far
                 [self.blank, header_bl,
-                 self.unit_bl] = algae.read_rawdata(filename=self.field("Blank"), additional=False, blank_mean_ex=None,
-                                                    blank_std_ex=None, co=None, factor=1, blank_corr=blank_corr,
+                 self.unit_bl] = algae.read_rawdata(filename=self.field("Blank"), factor=1, blank_corr=blank_corr,
                                                     plot_raw=False)
                 # convert blank to nW
                 blank_mean_ex, blank_std_ex = self.blank2nW()
@@ -983,11 +990,11 @@ class LDAPage(QWizardPage):
 
     def get_data(self):
         led_str = self.field('LED selected')
-        ls_led = [int(i) for i in led_str.split(',')]
+        self.ls_led = [int(i) if len(i) > 0 else 0. for i in led_str.split(',')]
 
         # get training data base
         [self.training_corr_red_sort, training,
-         self.training_red] = algae.training_database(trainings_path=self.field("Database"), led_used=ls_led)
+         self.training_red] = algae.training_database(trainings_path=self.field("Database"), led_used=self.ls_led)
 
         # information for training data. Which separation level is chosen?
         [self.classes_dict, _, self.colorclass_dict, _] = algae.separation_level(separation=self.field('separation'))
@@ -996,16 +1003,16 @@ class LDAPage(QWizardPage):
         # data correction        
         global loaded_data, xcoords, ls_LDAset
         peak_dt = True if 'peak detection' in ls_LDAset else False
-        
+
         [c, _, self.mean_corr,
-         LoD] = algae.correction_sample(l=loaded_data['l'], header=loaded_data['header'], date=loaded_data['date'],
+         LoD] = algae.correction_sample(df=loaded_data['l'], header=loaded_data['header'], date=loaded_data['date'],
                                         current=loaded_data['current'], volume=loaded_data['volume'],
                                         device=loaded_data['device'], unit_blank=loaded_data['unit_blank'],
-                                        led_total=loaded_data['l'].columns, kappa_spec=loaded_data['kappa_spec'],
+                                        led_total=self.ls_led, kappa_spec=loaded_data['kappa_spec'],
                                         correction=loaded_data['correction'], blank_corr=loaded_data['blank_corr'],
                                         xcoords=xcoords, full_calibration=loaded_data['full_calibration'],
                                         peak_detection=peak_dt, blank_std=loaded_data['blank_std'],
-                                        blank_mean=loaded_data['blank_mean'])
+                                        blank_mean=loaded_data['blank_mean'], file_em=self.field('em calibration'))
 
         # calculate average fluorescence intensity at different excitation wavelengths of sample.
         # standardize and normalize the values if it is done with the training-data
@@ -1174,7 +1181,7 @@ class LDAPage(QWizardPage):
         df_score = pd.DataFrame(df_score)
         for i in range(len(df_score.columns)):
             ax.plot(df_score.loc['LDA1', df_score.columns[i]], df_score.loc['LDA2', df_score.columns[i]], marker='^',
-                    markersize=2, color='orangered', label='')
+                    markersize=2, color=color_sample, label='')
             # store for x/y scale adjustment
             ls_xrange.append([df_score.loc['LDA1', df_score.columns[i]], df_score.loc['LDA1', df_score.columns[i]]])
             ls_yrange.append([df_score.loc['LDA2', df_score.columns[i]], df_score.loc['LDA2', df_score.columns[i]]])
@@ -1265,7 +1272,7 @@ class LDAPage(QWizardPage):
         df_score = pd.DataFrame(df_score)
         for i in range(len(df_score.columns)):
             ax.scatter(df_score.loc['LDA1', df_score.columns[i]], df_score.loc['LDA2', df_score.columns[i]],
-                       df_score.loc['LDA3', df_score.columns[i]], marker='^', s=2, color='orangered', label='')
+                       df_score.loc['LDA3', df_score.columns[i]], marker='^', s=2, color=color_sample, label='')
 
         # adjust layout
         f.tight_layout()
@@ -1470,12 +1477,12 @@ class FinalPage(QWizardPage):
 
 def generate_pigment_pattern(mean_pattern, ax=None, fig=None):
     global led_color_dict, results
+    ls_led_label = [str(i) + ' nm' for i in sorted(led_selected)]
     if fig is None or ax is None:
         fig, ax = plt.subplots()
         ax.set_xlim(0, 8)
         ax.set_xticks([0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5])
-        led_selection = ['380 nm', '403 nm', '438 nm', '453 nm', '472 nm', '526 nm', '593 nm', '640 nm']
-        ax.set_xticklabels(led_selection, rotation=15)
+        ax.set_xticklabels(ls_led_label, rotation=15)
         ax.tick_params(axis='x', which='both', labelsize=fs, width=.3, length=2.5)
         ax.tick_params(axis='y', which='both', labelsize=fs, width=.3, length=2.5)
         ax.set_xlabel('Wavelength / nm', fontsize=fs)
@@ -1483,18 +1490,16 @@ def generate_pigment_pattern(mean_pattern, ax=None, fig=None):
 
     # normalize average LED intensities
     mean_norm = mean_pattern / mean_pattern.max()
-    x = np.arange(len(mean_norm.index))
 
     # plot pattern
     for k, l in enumerate(mean_norm.index):
-        ax.bar(x[k]+0.5, mean_norm.loc[l, :], width=0.9, color=led_color_dict[l])
+        ax.bar(ls_led_label.index(l)+0.5, mean_norm.loc[l, :], width=0.9, color=led_color_dict[l])
 
     # adjust axes
-    ax.set_xticklabels(mean_norm.index, rotation=15)
     fig.subplots_adjust(left=0.15, right=0.95, bottom=0.2, top=0.9)
+    sns.despine()
 
     # draw figure
-    sns.despine()
     fig.canvas.draw()
     results['pigment pattern'] = fig
 
