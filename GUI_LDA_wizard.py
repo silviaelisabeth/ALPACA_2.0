@@ -44,6 +44,7 @@ loaded_data, xcoords, results = dict(), list(), dict()
 
 # global parameter for saving
 save_type = ['tiff', 'eps', 'jpg']
+loc_path = os.getcwd()
 
 
 class QIComboBox(QComboBox):
@@ -75,7 +76,7 @@ class MagicWizard(QWizard):
         self.setOptions(QtWidgets.QWizard.NoCancelButtonOnLastPage | QtWidgets.QWizard.HaveFinishButtonOnEarlyPages)
 
         # add a background image
-        path = os.path.join('/Users/au652733/Python/ALPACA/logo/', 'logo_ALPACA1.png')
+        path = os.path.join(loc_path + '/logo/', 'logo_ALPACA1.png')
         pixmap = QtGui.QPixmap(path)
         pixmap = pixmap.scaled(200, 200, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
         self.setPixmap(QWizard.BackgroundPixmap, pixmap)
@@ -139,7 +140,7 @@ class IntroPage(QWizardPage):
         self.database_edit, self.database = QTextEdit(self), QLineEdit()
         self.database_edit.setReadOnly(True), self.database_edit.setMaximumSize(200, 20)
 
-        self.fname_database = os.getcwd() + '/supplementary/trainingdatabase/20170810_trainingsmatrix_corrected.txt'
+        self.fname_database = loc_path + '/supplementary/trainingdatabase/20170810_trainingsmatrix_corrected.txt'
         self.database_edit.append('trainingsmatrix_corrected'), self.database.setText(self.fname_database)
         self.database_edit.setFont(QFont(font_button, fs_font)), self.database_edit.setAlignment(Qt.AlignRight)
 
@@ -193,8 +194,9 @@ class IntroPage(QWizardPage):
         self.registerField("Data*", self.fname_sample)
 
     def open_sample(self):
-        fname = QFileDialog.getOpenFileName(parent=self, caption='Select a measurement file', directory='measurement/',
-                                            filter='csv(*.csv *.txt)', initialFilter='csv(*.csv, *.txt)')[0]
+        fname = QFileDialog.getOpenFileName(parent=self, caption='Select a measurement file',
+                                            directory=loc_path + '/measurement/', filter='csv(*.csv *.txt)',
+                                            initialFilter='csv(*.csv, *.txt)')[0]
         if not fname:
             return
         self.read_sample_name(fname)
@@ -218,7 +220,9 @@ class IntroPage(QWizardPage):
         self.sample_edit.setText(str(self.date + '_' + self.name))
 
     def open_blank(self):
-        fname_blank = QFileDialog.getOpenFileName(self, "Select a blank file", "measurement/blank/")[0]
+        fname_blank = QFileDialog.getOpenFileName(parent=self, caption="Select a blank file",
+                                                  directory=loc_path + "/measurement/blank/",
+                                                  filter = 'csv(*.csv *.txt)', initialFilter = 'csv(*.csv, *.txt)')[0]
         if not fname_blank:
             return
 
@@ -244,8 +248,9 @@ class IntroPage(QWizardPage):
 
     def open_database(self):
         self.fname_database = None
-        self.fname_database = QFileDialog.getOpenFileName(self, "Select Training database",
-                                                          "supplementary/trainingdatabase")[0]
+        self.fname_database = QFileDialog.getOpenFileName(parent=self, caption="Select Training database",
+                                                          directory=loc_path+'/supplementary/trainingdatabase')[0]
+
         if not self.fname_database:
             return
         self.read_database_name(self.fname_database)
@@ -268,8 +273,8 @@ class IntroPage(QWizardPage):
         self.database_edit.setText(str(database_folder))
 
     def open_ex_calibration(self):
-        self.fname_ex_ = QFileDialog.getOpenFileName(self, "Select specific correction file for LEDs",
-                                                    "supplementary/calibration/excitation-site/")[0]
+        self.fname_ex_ = QFileDialog.getOpenFileName(parent=self, caption="Select specific correction file for LEDs",
+                                                    directory=loc_path+"/supplementary/calibration/excitation-site/")[0]
         if not self.fname_ex_:
             return
 
@@ -296,8 +301,8 @@ class IntroPage(QWizardPage):
         self.ex_correction_edit.setText(str(self.date_ex + '_' + self.name_ex))
 
     def open_em_calibration(self):
-        fname_em_ = QFileDialog.getOpenFileName(self, "Select specific correction file for emission side",
-                                                "supplementary/calibration/emission-site/")[0]
+        fname_em_ = QFileDialog.getOpenFileName(parent=self, caption="Select specific correction file for emission side",
+                                                directory=loc_path+"/supplementary/calibration/emission-site/")[0]
         if not fname_em_:
             return
 
@@ -1557,7 +1562,10 @@ if __name__ == '__main__':
     app = QApplication(sys.argv)
     # application style options: 'Breeze', 'Oxygen', 'QtCurve', 'Windows', 'Fusion'
     app.setStyle('QtCurve')
-    app.setWindowIcon(QIcon('ALPACA_icon.jpg'))
+    path = os.path.join(loc_path + '/logo/', 'alpaca.png')
+    pixmap = QtGui.QPixmap(path)
+    pixmap = pixmap.scaled(200, 200, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+    app.setWindowIcon(QIcon(pixmap))
 
     alpaca = MagicWizard()
     # screen Size adjustment

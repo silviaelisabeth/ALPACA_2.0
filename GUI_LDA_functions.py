@@ -16,8 +16,9 @@ sns.set_palette("colorblind", 10)
 sns.set_style("ticks", {"xtick.direction": "in", "ytick.direction": "in"})
 
 # global parameters and variables
-df_phylum = 'supplementary/phytoplankton/170427_algae.txt'
-phylum = 'supplementary/phytoplankton/170427_algalphylum.txt'
+loc_path = os.getcwd()
+file_group = loc_path + '/supplementary/phytoplankton/170427_algae.txt'
+file_phylum = loc_path + '/supplementary/phytoplankton/170427_algalphylum.txt'
 
 led_dict = {"1a1": '380 nm',
             "1a2": '403 nm',
@@ -292,6 +293,19 @@ def file_info_extend(filename, header, blank_mean_ex, blank_std_ex, pumprate=Non
     return name, date, current, blank_mean, blank_std, unit_blank, LEDs, pumprate
 
 
+def find_label(label, ls):
+    if isinstance(label, str):
+        if type(label) == type(ls[0]):
+            return label
+        else:
+            return int(label.split(' ')[0])
+    else:
+        if type(label) == type(ls[0]):
+            return label
+        else:
+            return str(label) + ' nm'
+
+
 def LED_Filter(name):
     """
     :param name:
@@ -388,25 +402,24 @@ def separation_level(separation):
     """
     if separation == 'phylum':
         [classes_dict, color_dict, colorclass_dict,
-         genus_names] = algae_dictionary('supplementary/phytoplankton/170427_algalphylum.txt')
+         genus_names] = algae_dictionary(loc_path + '/supplementary/phytoplankton/170427_algalphylum.txt')
     elif separation == 'class':
         [classes_dict, color_dict, colorclass_dict,
-         genus_names] = algae_dictionary('supplementary/phytoplankton/170427_algalclass.txt')
+         genus_names] = algae_dictionary(loc_path + '/supplementary/phytoplankton/170427_algalclass.txt')
     elif separation == 'order':
         [classes_dict, color_dict, colorclass_dict,
-         genus_names] = algae_dictionary('supplementary/phytoplankton/170427_algalorder.txt')
+         genus_names] = algae_dictionary(loc_path + '/supplementary/phytoplankton/170427_algalorder.txt')
     else:
         # separation is family
         [classes_dict, color_dict, colorclass_dict,
-         genus_names] = algae_dictionary('supplementary/phytoplankton/170427_algalfamily.txt')
+         genus_names] = algae_dictionary(loc_path + '/supplementary/phytoplankton/170427_algalfamily.txt')
 
     return classes_dict, color_dict, colorclass_dict, genus_names
 
 
 def taxonomic_level_reduction(prob, separation='phylum', likelyhood=False):
     # load general taxonomic information about algae
-    df_phylum = 'supplementary/phytoplankton/170427_algae.txt'
-    alg_group = pd.read_csv(df_phylum, sep='\t', encoding="latin-1")
+    alg_group = pd.read_csv(file_group, sep='\t', encoding="latin-1")
 
     # prepare data matrices for data reduction
     probability = pd.DataFrame(prob[0])  # for all identified groups
@@ -515,7 +528,6 @@ def counter(df, LoD, volume, xcoords=None, division=None, warn=True):
 
     # extracting the peaks
     peak = df.copy()
-
     for i, k in enumerate(peak.columns):    # i = numbers, k = wavelengths
         peak[k][peak[k] < LoD[i]] = np.nan
 
@@ -541,6 +553,9 @@ def counter(df, LoD, volume, xcoords=None, division=None, warn=True):
     elif xcoords[1] > xcoords[0]:
         mean_sample = pd.Series([np.nanmean(peak.loc[xcoords[0]:xcoords[1], col]) for col in peak.columns],
                                 index=peak.columns)
+    else:
+        mean_sample = pd.Series([0, 0, 0, 0, 0, 0, 0, 0], index=peak.columns)
+
     # blank
     if len(xcoords) > 2:
         if xcoords[2] > xcoords[3]:
@@ -549,6 +564,8 @@ def counter(df, LoD, volume, xcoords=None, division=None, warn=True):
         elif xcoords[3] > xcoords[2]:
             mean_blank = pd.Series([np.nanmean(peak.loc[xcoords[2]:xcoords[3], col]) for col in peak.columns],
                                    index=peak.columns)
+        else:
+            mean_blank = pd.Series([0, 0, 0, 0, 0, 0, 0, 0], index=peak.columns)
     else:
         mean_blank = pd.Series([0, 0, 0, 0, 0, 0, 0, 0], index=peak.columns)
 
@@ -661,7 +678,7 @@ def emission_correction(mean, file_em, device, RG9_sample, RG665_sample, led_ord
         led_order = [str(int(i)) + ' nm' if i != 0. else i for i in led_order]
 
     # Load emission factors from file
-    em_path = 'supplementary/calibration/emission-site/emission_device-' + str(device) + '.txt'
+    em_path = loc_path + '/supplementary/calibration/emission-site/emission_device-' + str(device) + '.txt'
     if os.path.isfile(em_path) is False:
         print('Warning! File not found; hence we use the default file', file_em)
         em_path = file_em
@@ -670,11 +687,13 @@ def emission_correction(mean, file_em, device, RG9_sample, RG665_sample, led_ord
 
     # Balance the RG665 and RG9 emission filters by LED-at-RG665 = LED-at-RG9 / balance_factor(RG665/RG9)
     for i in RG9_sample:
+        i = find_label(label=i, ls=mean.index)
         if i in mean.index:
             mean.loc[i, :] = mean.loc[i, :].values[0] / balance_factor.loc[int(device), i]
         else:
             print('LED', i, 'not used for analysis')
     for i in RG665_sample:
+        i = find_label(label=i, ls=mean.index)
         if i in mean.index:
             mean.loc[i, :] = mean.loc[i, :].values[0] / balance_factor.loc[int(device), i]
         else:
@@ -694,7 +713,7 @@ def em_corr_table(file_em, df, device, RG9, RG665, led_order):
     :return:
     """
     # Load emission factors from file
-    em_path = 'supplementary/calibration/emission-site/emission_device-' + str(device) + '.txt'
+    em_path = loc_path + '/supplementary/calibration/emission-site/emission_device-' + str(device) + '.txt'
     if os.path.isfile(em_path) is False:
         print('Warning! File not found; hence we use the default file', file_em)
         em_path = file_em
@@ -707,9 +726,23 @@ def em_corr_table(file_em, df, device, RG9, RG665, led_order):
     for i in RG9:
         if i in balance_factor.columns:
             df_em[i] = df[i].values / balance_factor.loc[int(device), i]
+        else:
+            if isinstance(i, str):
+                if int(i.split(' ')[0]) in balance_factor.columns:
+                    df_em[i] = df[i].values / balance_factor.loc[int(device), int(i.split(' ')[0])]
+            else:
+                if str(i) + ' nm' in balance_factor.columns:
+                    df_em[str(i) + ' nm'] = df[str(i) + ' nm'].values / balance_factor.loc[int(device), str(i) + ' nm']
     for i in RG665:
         if i in balance_factor.columns:
             df_em[i] = df[i].values / balance_factor.loc[int(device), i]
+        else:
+            if isinstance(i, str):
+                if int(i.split(' ')[0]) in balance_factor.columns:
+                    df_em[i] = df[i].values / balance_factor.loc[int(device), int(i.split(' ')[0])]
+            else:
+                if str(i) + ' nm' in balance_factor.columns:
+                    df_em[str(i) + ' nm'] = df[str(i) + ' nm'].values / balance_factor.loc[int(device), str(i) + ' nm']
     return df_em
 
 
@@ -735,7 +768,7 @@ def correction_led(mean, kappa_spec, date, current, peakcolumns, led_total, full
     if kappa_spec is None:
         # no specified correction factor. load the factor according to the date of the measurement file.
         if full_calibration is False:
-            kappa_ = 'supplementary/calibration/excitation-site/'
+            kappa_ = loc_path + '/supplementary/calibration/excitation-site/'
             kap = kappa_ + str(date[:-4]) + '_LED_correction_rhodamine101_spectrum.txt'
             if os.path.exists(kap) is True:
                 kappa = pd.read_csv(kap, sep='\t', index_col=0)
@@ -743,7 +776,7 @@ def correction_led(mean, kappa_spec, date, current, peakcolumns, led_total, full
                 print("ERROR! No such file in directory!")
                 return
         else:
-            kappa_ = 'supplementary/calibration/excitation-site/'
+            kappa_ = loc_path + '/supplementary/calibration/excitation-site/'
             kap = kappa_ + str(date[:-4]) + '_LED_correction_rhodamine101_spectrum.txt'
             kappa = pd.read_csv(kap, sep='\t', index_col=0)
     else:
@@ -801,7 +834,7 @@ def correction_led_table(df, kappa_spec, date, current, peakcolumns, full_calibr
     if kappa_spec is None:  # automatically chosen excitation-correction file
         # no specified correction factor. load the factor according to the date of the measurement file.
         if full_calibration is False:  # linear fit between 30-50mA
-            kappa_ = 'supplementary/calibration/excitation-site/'
+            kappa_ = loc_path + '/supplementary/calibration/excitation-site/'
             kap = kappa_ + str(date[:-4]) + '_LED_correction_rhodamine101_spectrum.txt'
             if os.path.exists(kap) is True:
                 kappa = pd.read_csv(kap, sep='\t', index_col=0)
@@ -809,7 +842,7 @@ def correction_led_table(df, kappa_spec, date, current, peakcolumns, full_calibr
                 print("ERROR! No such file in directory!")
                 return
         else:
-            kappa_ = 'supplementary/calibration/excitation-site/'
+            kappa_ = loc_path + '/supplementary/calibration/excitation-site/'
             kap = kappa_ + str(date[:-4]) + '_LED_correction_rhodamine101_spectrum.txt'
             kappa = pd.read_csv(kap, sep='\t', index_col=0)
     else:
@@ -875,7 +908,8 @@ def priority_lda(training_data_list, separation, training_corr):
     tr = training_data_list.tolist()
 
     # principle possible algae samples analysed
-    qqt = pd.read_csv('supplementary/phytoplankton/170427_algae.txt', sep='\t', header=0, encoding="latin-1")
+    qqt = pd.read_csv(loc_path + '/supplementary/phytoplankton/170427_algae.txt', sep='\t', header=0,
+                      encoding="latin-1")
     con = pd.DataFrame(qqt[separation])
     con.index = qqt['genus']
 
@@ -1193,8 +1227,8 @@ def prep_lda_classify(lda, training_score, df_score, classes_dict):
         prob.append(prob_(d_[el]))
 
     # load overview file for algal groups and group colors
-    alg_group = pd.read_csv(df_phylum, sep='\t', encoding="latin-1")
-    alg_phylum = pd.read_csv(phylum, sep='\t', header=None, encoding="latin-1", usecols=[1, 2],
+    alg_group = pd.read_csv(file_group, sep='\t', encoding="latin-1")
+    alg_phylum = pd.read_csv(file_phylum, sep='\t', header=None, encoding="latin-1", usecols=[1, 2],
                              index_col=0).drop_duplicates()
     phyl_group = pd.DataFrame(np.zeros(shape=(0, 2)), columns=['phylum_label', 'color'])
 
