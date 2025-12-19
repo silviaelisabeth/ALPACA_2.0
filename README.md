@@ -159,7 +159,7 @@ python GUI_LDA_wizard.py
 
 ---
 
-## 📖 Quick Start Guide
+## Quick Start Guide
 
 ### 1. Launch ALPACA GUI
 Execute the main script from your terminal:
