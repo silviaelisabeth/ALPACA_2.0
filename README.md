@@ -21,7 +21,6 @@ A graphical user interface for ALPACA – an ultra low-cost (<400 USD) fluoromet
 </tr>
 </table>
 
----
 
 ## Overview
 
@@ -32,7 +31,6 @@ Climate change and environmental shifts have increased the frequency and intensi
 - **Field-Ready Design**: Modular system suitable for laboratory benchtop or submersible in situ deployment
 - **High Sensitivity**: Detection limit of 10 cells per liter
 
----
 
 ## Scientific Background
 
@@ -55,7 +53,7 @@ The system has been trained and validated on **8 major phytoplankton phyla**:
 | **Cryptophyta** | Cryptophytes | Diverse environments |
 | **Euglenophyta** | Euglenoids | Freshwater indicators |
 
----
+
 
 ## Key Features
 
@@ -74,7 +72,7 @@ The system has been trained and validated on **8 major phytoplankton phyla**:
 - **Multi-Wavelength**: Captures comprehensive spectral information
 - **Real-Time Analysis**: Continuous monitoring and immediate classification
 
----
+
 
 ## Prerequisites
 
@@ -89,7 +87,7 @@ The system has been trained and validated on **8 major phytoplankton phyla**:
 - Familiarity with fluorescence spectroscopy (recommended)
 - No programming knowledge required for GUI operation
 
----
+
 
 ## Installation
 
@@ -157,7 +155,6 @@ python3 GUI_LDA_wizard.py
 python GUI_LDA_wizard.py
 ```
 
----
 
 ## Quick Start Guide
 
@@ -196,7 +193,6 @@ python3 /path/to/alpaca-2.0/GUI_LDA_wizard.py
 - Export spectral plots
 - Generate summary statistics
 
----
 
 ## Validation & Performance
 
@@ -212,7 +208,6 @@ python3 /path/to/alpaca-2.0/GUI_LDA_wizard.py
 - Successful discrimination of toxin-producing classes
 - Validated against HPLC pigment analysis
 
----
 
 ## Workflow Example
 
@@ -257,7 +252,6 @@ For enhanced validation, integrate High-Performance Liquid Chromatography (HPLC)
 3. Compare chemotaxonomic assignments
 4. Refine LDA model based on discrepancies
 
----
 
 ## Publications & Citations
 
@@ -297,7 +291,6 @@ For enhanced validation, integrate High-Performance Liquid Chromatography (HPLC)
 - DOI: [10.1021/acs.est.8b04528](https://doi.org/10.1021/acs.est.8b04528)
 - DOI: [10.1021/acs.est.8b00578](https://doi.org/10.1021/acs.est.8b00578)
 
----
 
 ## Troubleshooting
 
@@ -347,7 +340,6 @@ chmod +x GUI_LDA_wizard.py
 - Close other memory-intensive applications
 - Consider using a virtual environment
 
----
 
 ## Contributing
 
@@ -367,7 +359,6 @@ We welcome contributions from the community!
 - Mobile/web-based interface
 - Automated quality control algorithms
 
----
 
 ## Real-World Applications
 
@@ -384,7 +375,6 @@ We welcome contributions from the community!
 - Citizen science programs
 - Climate change impact studies
 
----
 
 ## License
 
@@ -396,7 +386,6 @@ The above copyright notice and this permission notice shall be included in all c
 
 **THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND**, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
----
 
 ## Contact & Support
 
@@ -406,7 +395,6 @@ The above copyright notice and this permission notice shall be included in all c
 
 For hardware inquiries, collaboration opportunities, or technical support, please reach out via email.
 
----
 
 ## Acknowledgments
 
@@ -418,7 +406,6 @@ This work was supported by:
 
 Special thanks to colleagues at the Port of Genoa for hosting the first in situ deployment.
 
----
 
 ## Research Opportunities
 - Long-term deployment studies
