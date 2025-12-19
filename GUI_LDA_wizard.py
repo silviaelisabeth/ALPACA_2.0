@@ -1192,17 +1192,17 @@ class LDAPage(QWizardPage):
             ls_yrange.append([df_score.loc['LDA2', df_score.columns[i]], df_score.loc['LDA2', df_score.columns[i]]])
 
         # adjust x/y scale
-        if np.nanmin(pd.DataFrame(ls_xrange)) < 0:
-            min_ = -1*np.abs(np.nanmin(pd.DataFrame(ls_xrange))) * 1.25
-        else:
-            min_ = np.abs(np.nanmin(pd.DataFrame(ls_xrange))) * 0.85
-        ax.set_xlim(min_, np.nanmax(pd.DataFrame(ls_xrange)) * 1.25)
+        x_arr = get_numeric_array(ls_xrange)
+        y_arr = get_numeric_array(ls_yrange)
 
-        if np.nanmin(pd.DataFrame(ls_yrange)) < 0:
-            min_ = -1*np.abs(np.nanmin(pd.DataFrame(ls_yrange))) * 1.25
-        else:
-            min_ = np.abs(np.nanmin(pd.DataFrame(ls_yrange))) * 0.85
-        ax.set_ylim(min_, np.nanmax(pd.DataFrame(ls_yrange)) * 1.25)
+        x_min = -1 * np.abs(np.nanmin(x_arr)) * 1.25 if np.nanmin(x_arr) < 0 else np.nanmin(x_arr) * 0.85
+        x_max = np.nanmax(x_arr) * 1.25
+        ax.set_xlim(x_min, x_max)
+
+        y_min = -1 * np.abs(np.nanmin(y_arr)) * 1.25 if np.nanmin(y_arr) < 0 else np.nanmin(y_arr) * 0.85
+        y_max = np.nanmax(y_arr) * 1.25
+        ax.set_ylim(y_min, y_max)
+
         sns.despine()
         f.subplots_adjust(left=0.15, right=0.75, bottom=0.2, top=0.9)
     
@@ -1554,6 +1554,13 @@ def feedback_user(text, icon, title):
     if returnValue == QMessageBox.Ok:
         pass
 
+
+def get_numeric_array(lst):
+    """Flatten a nested list of numbers or pandas Series into a 1D NumPy array."""
+    return np.array([
+        float(x.iloc[0]) if isinstance(x, pd.Series) else float(x)
+        for row in lst for x in row
+    ])
 
 # -----------------------------------------------------------------------------------------------------------------
 if __name__ == '__main__':
