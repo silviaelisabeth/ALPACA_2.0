@@ -30,7 +30,7 @@ sns.set_style('ticks', {"xtick.direction": "in", "ytick.direction": "in"})
 
 
 # global layout parameters
-fs, fs_font, fs_grp = 5, 11, 10                    # font size in plot figures | buttons and text | group labels
+fs, fs_font, fs_grp = 8, 11, 10                    # font size in plot figures | buttons and text | group labels
 font_button, font_bod = 'Helvetica Neue', 'Arimo'
 led_color_dict = {"380 nm": '#610061', "403 nm": '#8300BC', "438 nm": '#0A00FF', "453 nm": '#0057FF',
                   "472 nm": '#00AEFF', "526 nm": '#00FF17', "544 nm": '#8CFF00', "593 nm": '#FFD500',
@@ -76,7 +76,7 @@ class MagicWizard(QWizard):
         self.setOptions(QtWidgets.QWizard.NoCancelButtonOnLastPage | QtWidgets.QWizard.HaveFinishButtonOnEarlyPages)
 
         # add a background image
-        path = os.path.join(loc_path + '/logo/', 'logo_ALPACA1.png')
+        path = os.path.join(loc_path + '/logo/', 'logo_ALPACA4.png')
         pixmap = QtGui.QPixmap(path)
         pixmap = pixmap.scaled(200, 200, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
         self.setPixmap(QWizard.BackgroundPixmap, pixmap)

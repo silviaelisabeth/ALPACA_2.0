@@ -236,7 +236,7 @@ def file_info_sort(filename, header, blank_mean_ex):
     # Extract the blank calculated and stored in the header
     blank_mean_header, unit_blank_header = [], []
     for k in header.loc[4, :]:
-        if isinstance(k, np.float) is False:
+        if isinstance(k, float) is False:
             blank_mean_header.append(float(k.split('=')[1].split('+/-')[0]))
             unit_blank_header.append(k.split('=')[1][-2:])
 
@@ -246,7 +246,7 @@ def file_info_sort(filename, header, blank_mean_ex):
 
     # combine blank from external file and from header if both are necessary
     blank_mean = [sum(x) for x in zip(blank_mean_header, blank_mean_ex)] if blank_mean_ex else blank_mean_header
-    LEDs = [e.split(' ')[-2] + ' nm' for e in header.loc[1, :] if isinstance(e, np.float) is False]
+    LEDs = [e.split(' ')[-2] + ' nm' for e in header.loc[1, :] if isinstance(e, float) is False]
 
     return date, blank_mean, LEDs
 
@@ -270,13 +270,13 @@ def file_info_extend(filename, header, blank_mean_ex, blank_std_ex, pumprate=Non
 
     current = []  # mA
     for i in header.loc[2, :]:
-        if isinstance(i, np.float) is False:
+        if isinstance(i, float) is False:
             current.append(int(float(i.split('=')[1].split('mA')[0].strip())))
 
     blank_std_header, unit_blank_header = [], []
     # Extract the blank calculated and stored in the header
     for k in header.loc[4, :]:
-        if isinstance(k, np.float) is False:
+        if isinstance(k, float) is False:
             blank_std_header.append(float(k.split('=')[1].split('+/-')[1][:-2]))
             unit_blank_header.append(k.split('=')[1][-2:])
 
@@ -529,7 +529,7 @@ def counter(df, LoD, volume, xcoords=None, division=None, warn=True):
     # extracting the peaks
     peak = df.copy()
     for i, k in enumerate(peak.columns):    # i = numbers, k = wavelengths
-        peak[k][peak[k] < LoD[i]] = np.nan
+        peak.loc[peak[k] < LoD[i], k] = np.nan
 
     # counting peaks - when the pump rate is too slow, there are more measurement points for the same biomass
     # which has to be taken into account
@@ -540,34 +540,28 @@ def counter(df, LoD, volume, xcoords=None, division=None, warn=True):
             if cnm.iloc[k] < LoD[i] and cnm.iloc[k + 1] >= LoD[i]:  # single peaks found in the file
                 c[c.index[i]] += 1
         if len(peak[c.index[i]].dropna()) >= len(cnm)/2:    # only signals > LOD found in the file -> high cell density
-            c[c.index[i]] = '--'
+            c = c.astype(object)
+            c.iloc[i] = '--'
             if warn is True:
                 if c.index[i].split(' ')[0] == str(division[0]) or c.index[i].split(' ')[0] == str(division[1]):
                     print('Cell density at LED {} ≥ {} cells/{}mL!'.format(c.index[i], len(cnm)/2, volume))
 
     # calculate the mean value for each LED from the detected peaks and set negative values to zero
     # sample
-    if xcoords[0] >= xcoords[1]:
-        mean_sample = pd.Series([np.nanmean(peak.loc[xcoords[1]:xcoords[0], col]) for col in peak.columns],
-                                index=peak.columns)
-    elif xcoords[1] > xcoords[0]:
-        mean_sample = pd.Series([np.nanmean(peak.loc[xcoords[0]:xcoords[1], col]) for col in peak.columns],
-                                index=peak.columns)
-    else:
-        mean_sample = pd.Series([0, 0, 0, 0, 0, 0, 0, 0], index=peak.columns)
+    low, high = sorted(xcoords[:2])  # only first two are used
+    mask = (peak.index >= low) & (peak.index <= high)
+    mean_sample = pd.Series(
+        [np.nanmean(peak.loc[mask, col]) for col in peak.columns],
+        index=peak.columns
+    )
 
     # blank
-    if len(xcoords) > 2:
-        if xcoords[2] > xcoords[3]:
-            mean_blank = pd.Series([np.nanmean(peak.loc[xcoords[3]:xcoords[2], col]) for col in peak.columns],
-                                   index=peak.columns)
-        elif xcoords[3] > xcoords[2]:
-            mean_blank = pd.Series([np.nanmean(peak.loc[xcoords[2]:xcoords[3], col]) for col in peak.columns],
-                                   index=peak.columns)
-        else:
-            mean_blank = pd.Series([0, 0, 0, 0, 0, 0, 0, 0], index=peak.columns)
-    else:
-        mean_blank = pd.Series([0, 0, 0, 0, 0, 0, 0, 0], index=peak.columns)
+    low, high = sorted(xcoords[2:])  # only first two are used
+    mask = (peak.index >= low) & (peak.index <= high)
+    mean_blank = pd.Series(
+        [np.nanmean(peak.loc[mask, col]) for col in peak.columns],
+        index=peak.columns
+    )
 
     for val in mean_blank.index:
         if math.isnan(mean_blank[val]) is True:
@@ -1269,8 +1263,11 @@ def output(sample, summary, summary_, path, date, prob, separation='phylum', sav
     b = prob[0]['gaussian prob.']
     bb = b.drop([b.idxmax()])
     overall = round((b.max() - bb.max()) / b.max() * 100, 3)
-    res1 = res.append(pd.DataFrame(['----', '----', '----'], index=res.columns).T)
-    res1 = res1.append(pd.DataFrame(['overall security [%] for class', prob[0].index[0], overall], index=res.columns).T)
+
+    new_row = pd.concat([res, pd.DataFrame(['----', '----', '----'], index=res.columns).T])
+    res1 = pd.concat([
+        new_row, pd.DataFrame(['overall security [%] for class', prob[0].index[0], overall], index=res.columns).T
+    ])
 
     if save is True:
         newfolder = path + '/' + 'results_LDA'
