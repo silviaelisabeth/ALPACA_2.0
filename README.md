@@ -257,20 +257,27 @@ For enhanced validation, integrate High-Performance Liquid Chromatography (HPLC)
 
 ### Primary References
 
-**Hardware Development:**
 ```bibtex
 @article{Zieger2018Hardware,
-  title={A Low-Cost Modular Multi-Channel Fluorescence Detector for Phytoplankton Monitoring},
+  title={Compact and Low-Cost Fluorescence Based Flow-Through Analyzer for Early-Stage Classification of Potentially Toxic Algae and in Situ Semiquantification},
   journal={Environmental Science & Technology},
   year={2018},
   doi={10.1021/acs.est.8b00578}
 }
 ```
 
-**Classification Algorithm:**
 ```bibtex
 @article{Zieger2018LDA,
   title={Pigment-Based Chemotaxonomy of Phytoplankton using Linear Discriminant Analysis},
+  journal={Environmental Science & Technology},
+  year={2018},
+  doi={10.1021/acs.est.8b04528}
+}
+```
+
+```bibtex
+@article{Zieger2018Chemotaxonomy,
+  title={Spectral Characterization of Eight Marine Phytoplankton Phyla and Assessing a Pigment-Based Taxonomic Discriminant Analysis for the in Situ Classification of Phytoplankton Blooms},
   journal={Environmental Science & Technology},
   year={2018},
   doi={10.1021/acs.est.8b04528}
