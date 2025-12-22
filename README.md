@@ -277,16 +277,6 @@ For enhanced validation, integrate High-Performance Liquid Chromatography (HPLC)
 }
 ```
 
-**Comprehensive Theory:**
-```bibtex
-@phdthesis{Zieger2020,
-  author={Zieger, Silvia R. E.},
-  title={Multiparametric Sensing: From Development to Application in Marine Science},
-  school={University},
-  year={2020}
-}
-```
-
 ### Related Publications
 - DOI: [10.1021/acs.est.8b04528](https://doi.org/10.1021/acs.est.8b04528)
 - DOI: [10.1021/acs.est.8b00578](https://doi.org/10.1021/acs.est.8b00578)
